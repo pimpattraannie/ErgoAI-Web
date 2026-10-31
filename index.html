@@ -87,22 +87,22 @@
       canvasCtx.restore();
 
       if (results.poseLandmarks) {
-        // ดึงพิกัดจุดสำคัญ: หูซ้าย (11), ไหล่ซ้าย (11), ไหล่ขวา (12)
-        const leftShoulder = results.poseLandmarks[11];
-        const rightShoulder = results.poseLandmarks[12];
-        const leftEar = results.poseLandmarks[7];
+        // ดึงพิกัดที่ถูกต้องตามดักชนีของ MediaPipe Pose
+        const leftEar = results.poseLandmarks[7];       // หูซ้าย (Index 7)
+        const leftShoulder = results.poseLandmarks[11];  // ไหล่ซ้าย (Index 11)
+        const rightShoulder = results.poseLandmarks[12]; // ไหล่ขวา (Index 12)
 
-        // วาดจุดไหล่และคอบน Canvas
-        drawPoint(leftShoulder);
-        drawPoint(rightShoulder);
-        drawPoint(leftEar);
+        // วาดจุดและระบุสีให้ชัดเจน
+        drawPoint(leftEar, '#FF3D00');       // จุดหูซ้าย = สีส้ม
+        drawPoint(leftShoulder, '#00E676');  // จุดไหล่ซ้าย = สีเขียว
+        drawPoint(rightShoulder, '#29B6F6'); // จุดไหล่ขวา = สีฟ้า
 
-        // คำนวณองศาการเอียงคอ (คอ-ไหล่ซ้าย-ไหล่ขวา)
+        // คำนวณองศาการเอียงคอ (หูซ้าย - ไหล่ซ้าย - ไหล่ขวา)
         const neckAngle = calculateAngle(leftEar, leftShoulder, rightShoulder);
         angleVal.innerText = neckAngle;
 
-        // Logic ตรวจจับการยืดคอ (Targeted Game Logic)
-        if (neckAngle < 60) {
+        // Logic ตรวจจับการยืดคอ
+        if (neckAngle < 65) {
           poseStatus.innerText = "ดีมาก! เอียงคอยืดกล้ามเนื้อค้างไว้";
           poseStatus.style.color = "#00E676";
         } else {
@@ -112,10 +112,15 @@
       }
     }
 
-    function drawPoint(landmark) {
+    // ปรับฟังก์ชันวาดจุดให้รับค่าสีแยกกันได้
+    function drawPoint(landmark, color = '#00E676') {
+      if (!landmark) return;
       canvasCtx.beginPath();
-      canvasCtx.arc(landmark.x * canvasElement.width, landmark.y * canvasElement.height, 8, 0, 2 * Math.PI);
-      canvasCtx.fillStyle = '#00E676';
+      // คำนวณพิกัดจากการกลับข้างภาพ Mirror
+      const x = (1 - landmark.x) * canvasElement.width;
+      const y = landmark.y * canvasElement.height;
+      canvasCtx.arc(x, y, 8, 0, 2 * Math.PI);
+      canvasCtx.fillStyle = color;
       canvasCtx.fill();
     }
 
