@@ -41,6 +41,7 @@
     }
     .status { color: #FFD54F; font-weight: bold; }
     .timer { font-size: 36px; color: #00E676; font-weight: bold; margin-top: 5px; }
+    .angle-debug { font-size: 16px; color: #888; margin-top: 5px; }
   </style>
 </head>
 <body>
@@ -51,6 +52,7 @@
   <div class="score-board">
     <div>สถานะ: <span id="pose-status" class="status">กำลังเตรียมพร้อม...</span></div>
     <div class="timer" id="timer-val">⏱️ 5</div>
+    <div class="angle-debug">มุมคอซ้าย: <span id="left-angle">0</span>° | มุมคอขวา: <span id="right-angle">0</span>°</div>
   </div>
 
   <br>
@@ -66,10 +68,21 @@
     const canvasCtx = canvasElement.getContext('2d');
     const poseStatus = document.getElementById('pose-status');
     const timerVal = document.getElementById('timer-val');
+    const leftAngleVal = document.getElementById('left-angle');
+    const rightAngleVal = document.getElementById('right-angle');
 
     let currentStep = 0;      // 0 = ยืดซ้าย, 1 = ยืดขวา, 2 = สำเร็จ
     let holdStartTime = null; 
     const HOLD_DURATION = 5;  // ค้างไว้ 5 วินาที
+
+    // คำนวณองศาระหว่างจุด 3 จุด
+    function calculateAngle(a, b, c) {
+      if (!a || !b || !c) return 180;
+      const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+      let angle = Math.abs((radians * 180.0) / Math.PI);
+      if (angle > 180.0) angle = 360 - angle;
+      return Math.round(angle);
+    }
 
     function onResults(results) {
       canvasCtx.save();
@@ -81,41 +94,40 @@
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.poseLandmarks) {
-        // ดึงพิกัดที่ถูกต้องตามดัชนีจริงของ MediaPipe Pose
-        const rightEar = results.poseLandmarks[7];       // หูขวา (Index 7)
-        const leftEar = results.poseLandmarks[8];        // หูซ้าย (Index 8)
-        const rightShoulder = results.poseLandmarks[11];  // ไหล่ขวา (Index 11)
-        const leftShoulder = results.poseLandmarks[12];   // ไหล่ซ้าย (Index 12)
+        const rawLeftEar = results.poseLandmarks[7];        
+        const rawRightEar = results.poseLandmarks[8];       
+        const rawLeftShoulder = results.poseLandmarks[11];  
+        const rawRightShoulder = results.poseLandmarks[12]; 
 
-        // 1. วาดเส้นโครงสร้างที่ถูกต้อง
-        drawLine(leftEar, leftShoulder, '#FF3D00');       // เส้นหูซ้าย -> ไหล่ซ้าย (ส้ม)
-        drawLine(rightEar, rightShoulder, '#FF9100');     // เส้นหูขวา -> ไหล่ขวา (ส้มอ่อน)
-        drawLine(leftShoulder, rightShoulder, '#00E676'); // เส้นฐานไหล่ (เขียว)
+        // สลับฝั่งพิกัด X ให้ตรงกับร่างกายผู้ใช้บน Mirror 100%
+        const userLeftEar = { x: 1 - rawRightEar.x, y: rawRightEar.y };
+        const userRightEar = { x: 1 - rawLeftEar.x, y: rawLeftEar.y };
+        const userLeftShoulder = { x: 1 - rawRightShoulder.x, y: rawRightShoulder.y };
+        const userRightShoulder = { x: 1 - rawRightShoulder.x, y: rawLeftShoulder.y };
 
-        // 2. วาดจุดข้อต่อ
-        drawPoint(leftEar, '#FF3D00');       // หูซ้าย = จุดสีส้ม
-        drawPoint(rightEar, '#FF9100');      // หูขวา = จุดสีส้มอ่อน
-        drawPoint(leftShoulder, '#00E676');  // ไหล่ซ้าย = จุดสีเขียว
-        drawPoint(rightShoulder, '#29B6F6'); // ไหล่ขวา = จุดสีฟ้า
+        // วาดเส้นและจุด
+        drawLine(userLeftEar, userLeftShoulder, '#FF3D00');
+        drawLine(userRightEar, userRightShoulder, '#FF9100');
+        drawLine(userLeftShoulder, userRightShoulder, '#00E676');
 
-        // คำนวณระยะห่างแนวตั้ง (Y-distance) ระหว่างหูกับไหล่แต่ละฝั่ง
-        // ยิ่งเอียงคอลงมาหาไหล่ ค่าจะยิ่งน้อยลง (เข้าใกล้ 0)
-        const leftDistanceY = Math.abs(leftEar.y - leftShoulder.y);
-        const rightDistanceY = Math.abs(rightEar.y - rightShoulder.y);
+        drawPoint(userLeftEar, '#FF3D00');       
+        drawPoint(userRightEar, '#FF9100');      
+        drawPoint(userLeftShoulder, '#00E676');  
+        drawPoint(userRightShoulder, '#29B6F6'); 
 
-        // ระยะฐานไหล่กว้าง (ใช้เทียบสเกลตามระยะห่างกล้อง)
-        const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
-        
-        // คำนวณ Ratio การเอียงคอ (ปกติจะ ~0.55-0.70 เมื่อยืดจะลงมาเหลือน้อยกว่า 0.38)
-        const leftStretchRatio = leftDistanceY / shoulderWidth;
-        const rightStretchRatio = rightDistanceY / shoulderWidth;
+        // คำนวณองศาฐานไหล่เทียบกับคอ
+        const userLeftAngle = calculateAngle(userLeftEar, userLeftShoulder, userRightShoulder);
+        const userRightAngle = calculateAngle(userRightEar, userRightShoulder, userLeftShoulder);
+
+        leftAngleVal.innerText = userLeftAngle;
+        rightAngleVal.innerText = userRightAngle;
 
         const currentTime = Date.now();
 
         // 🎯 LOGIC การจัดการขั้นตอนยืด (STEP 0 -> STEP 1 -> STEP 2)
         if (currentStep === 0) {
-          // STEP 0: ยืดคอไปทาง "ซ้าย" ของผู้ใช้ (หูซ้ายเข้าหาไหล่ซ้าย)
-          if (leftStretchRatio < 0.38) {
+          // STEP 0: ยืดคอไปทาง "ซ้าย" ของผู้ใช้ (มุมแคบลง < 48°)
+          if (userLeftAngle < 48) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsedSeconds;
@@ -125,7 +137,7 @@
               poseStatus.style.color = "#00E676";
               timerVal.innerText = `⏱️ ${remaining}`;
             } else {
-              // ยืดครบ 5 วินาที -> ไป STEP 1 (ยืดขวา)
+              // ยืดครบ 5 วินาที -> ไป STEP 1 (ขวา)
               currentStep = 1;
               holdStartTime = null;
               timerVal.innerText = `⏱️ 5`;
@@ -138,8 +150,8 @@
           }
         } 
         else if (currentStep === 1) {
-          // STEP 1: ยืดคอไปทาง "ขวา" ของผู้ใช้ (หูขวาเข้าหาไหล่ขวา)
-          if (rightStretchRatio < 0.38) {
+          // STEP 1: ยืดคอไปทาง "ขวา" ของผู้ใช้ (มุมแคบลง < 48°)
+          if (userRightAngle < 48) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsedSeconds;
@@ -161,7 +173,7 @@
           }
         } 
         else if (currentStep === 2) {
-          // STEP 2: จบภารกิจ
+          // STEP 2: จบเกม
           poseStatus.innerText = "🎉 ยอดเยี่ยม! คุณยืดคอครบทั้ง 2 ข้างเรียบร้อยแล้ว";
           poseStatus.style.color = "#00E676";
           timerVal.innerText = "✅ สำเร็จ";
