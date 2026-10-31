@@ -75,7 +75,7 @@
       return Math.round(angle);
     }
 
-    // ฟังก์ชันประมวลผลเมื่อ MediaPipe จับจุดข้อต่อได้
+   // ฟังก์ชันประมวลผลเมื่อ MediaPipe จับจุดข้อต่อได้
     function onResults(results) {
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -92,7 +92,11 @@
         const leftShoulder = results.poseLandmarks[11];  // ไหล่ซ้าย (Index 11)
         const rightShoulder = results.poseLandmarks[12]; // ไหล่ขวา (Index 12)
 
-        // วาดจุดและระบุสีให้ชัดเจน
+        // 1. วาดเส้นเชื่อมระหว่างจุด (เพิ่มตรงนี้)
+        drawLine(leftEar, leftShoulder, '#FF3D00');       // เส้นจากหูซ้ายไปไหล่ซ้าย (สีส้ม)
+        drawLine(leftShoulder, rightShoulder, '#00E676'); // เส้นจากไหล่ซ้ายไปไหล่ขวา (สีเขียว)
+
+        // 2. วาดจุดและระบุสีให้ชัดเจน
         drawPoint(leftEar, '#FF3D00');       // จุดหูซ้าย = สีส้ม
         drawPoint(leftShoulder, '#00E676');  // จุดไหล่ซ้าย = สีเขียว
         drawPoint(rightShoulder, '#29B6F6'); // จุดไหล่ขวา = สีฟ้า
@@ -110,6 +114,17 @@
           poseStatus.style.color = "#FFD54F";
         }
       }
+    }
+
+    // ฟังก์ชันสำหรับวาดเส้นเชื่อมจุด (นำไปวางไว้ต่อจากฟังก์ชัน drawPoint ได้เลยครับ)
+    function drawLine(fromLandmark, toLandmark, color = '#FFFFFF') {
+      if (!fromLandmark || !toLandmark) return;
+      canvasCtx.beginPath();
+      canvasCtx.moveTo((1 - fromLandmark.x) * canvasElement.width, fromLandmark.y * canvasElement.height);
+      canvasCtx.lineTo((1 - toLandmark.x) * canvasElement.width, toLandmark.y * canvasElement.height);
+      canvasCtx.lineWidth = 4;
+      canvasCtx.strokeStyle = color;
+      canvasCtx.stroke();
     }
 
     // ปรับฟังก์ชันวาดจุดให้รับค่าสีแยกกันได้
