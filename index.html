@@ -67,7 +67,7 @@
     const poseStatus = document.getElementById('pose-status');
     const angleVal = document.getElementById('angle-val');
 
-    // คำนวณองศาระหว่างจุด 3 จุด
+    // ฟังก์ชันคำนวณองศาระหว่างจุด 3 จุด
     function calculateAngle(a, b, c) {
       if (!a || !b || !c) return 180;
       const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
@@ -93,30 +93,35 @@
         const leftShoulder = results.poseLandmarks[11];  // ไหล่ซ้าย (Index 11)
         const rightShoulder = results.poseLandmarks[12]; // ไหล่ขวา (Index 12)
 
-        // วาดเส้นเชื่อมคอและไหล่
-        drawLine(leftEar, leftShoulder, '#FF3D00');
-        drawLine(rightEar, rightShoulder, '#FF3D00');
-        drawLine(leftShoulder, rightShoulder, '#00E676');
+        // 1. วาดเส้นเชื่อมโครงสร้าง (คอซ้าย, คอขวา, และแนวฐานไหล่)
+        drawLine(leftEar, leftShoulder, '#FF3D00');       // เส้นหูซ้าย -> ไหล่ซ้าย (สีส้ม)
+        drawLine(rightEar, rightShoulder, '#FF9100');     // เส้นหูขวา -> ไหล่ขวา (สีส้มอ่อน)
+        drawLine(leftShoulder, rightShoulder, '#00E676'); // เส้นแนวไหล่ซ้าย -> ไหล่ขวา (สีเขียว)
 
-        // วาดจุด
+        // 2. วาดจุดข้อต่อ
         drawPoint(leftEar, '#FF3D00');       // หูซ้าย = สีส้ม
         drawPoint(rightEar, '#FF9100');      // หูขวา = สีส้มอ่อน
         drawPoint(leftShoulder, '#00E676');  // ไหล่ซ้าย = สีเขียว
         drawPoint(rightShoulder, '#29B6F6'); // ไหล่ขวา = สีฟ้า
 
-        // คำนวณองศาการเอียงคอฝั่งซ้าย (เทียบกับหูซ้าย)
-        const neckAngle = calculateAngle(leftEar, leftShoulder, rightShoulder);
-        angleVal.innerText = neckAngle;
+        // คำนวณองศาการเอียงคอทั้งฝั่งซ้ายและขวา
+        const leftAngle = calculateAngle(leftEar, leftShoulder, rightShoulder);
+        const rightAngle = calculateAngle(rightEar, rightShoulder, leftShoulder);
 
-        // เช็กระยะทางระหว่างหูซ้ายกับไหล่ซ้ายจริงบนภาพ
-        // ถ้าคอเอียงลงมาทางไหล่ซ้ายของคุณจริง ค่า Y จะเข้าใกล้กัน
-        const earShoulderDistY = Math.abs(leftEar.y - leftShoulder.y);
+        // ดึงมุมเอียงที่น้อยที่สุด (ฝั่งที่กำลังยืดคอลงมา)
+        const minAngle = Math.min(leftAngle, rightAngle);
+        angleVal.innerText = minAngle;
 
-        if (earShoulderDistY < 0.18 || neckAngle < 65) {
+        // เช็กระยะทางแนวตั้งระหว่างหูกับไหล่
+        const leftDistY = Math.abs(leftEar.y - leftShoulder.y);
+        const rightDistY = Math.abs(rightEar.y - rightShoulder.y);
+
+        // เงื่อนไข: ถ้าเอียงคอยืดฝั่งใดฝั่งหนึ่งลงมาเกินเกณฑ์
+        if (minAngle < 65 || leftDistY < 0.18 || rightDistY < 0.18) {
           poseStatus.innerText = "ดีมาก! เอียงคอยืดกล้ามเนื้อค้างไว้";
           poseStatus.style.color = "#00E676";
         } else {
-          poseStatus.innerText = "เอียงคอไปทางซ้ายของคุณ (เอาหูซ้ายลงหาไหล่)";
+          poseStatus.innerText = "เอียงคอไปทางซ้ายหรือขวาเพื่อเริ่มยืด";
           poseStatus.style.color = "#FFD54F";
         }
       }
@@ -134,40 +139,6 @@
       canvasCtx.stroke();
     }
 
-    // ฟังก์ชันวาดจุดสี
+    // ฟังก์ชันวาดจุดข้อต่อ
     function drawPoint(landmark, color = '#00E676') {
       if (!landmark) return;
-      canvasCtx.beginPath();
-      const x = landmark.x * canvasElement.width;
-      const y = landmark.y * canvasElement.height;
-      canvasCtx.arc(x, y, 8, 0, 2 * Math.PI);
-      canvasCtx.fillStyle = color;
-      canvasCtx.fill();
-    }
-
-    // ตั้งค่า MediaPipe Pose
-    const pose = new Pose({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-    });
-
-    pose.setOptions({
-      modelComplexity: 1,
-      smoothLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-
-    pose.onResults(onResults);
-
-    // เปิดใช้งานกล้อง Web Camera
-    const camera = new Camera(videoElement, {
-      onFrame: async () => {
-        await pose.send({ image: videoElement });
-      },
-      width: 640,
-      height: 480
-    });
-    camera.start();
-  </script>
-</body>
-</html>
