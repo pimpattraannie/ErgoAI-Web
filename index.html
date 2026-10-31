@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ErgoAI - Active Intervention Mini-Game</title>
+  
+  <!-- โหลด MediaPipe Pose & Camera Utils จาก CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #121212;
+      color: #FFFFFF;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 { color: #00E676; margin-bottom: 5px; }
+    .container {
+      position: relative;
+      display: inline-block;
+      margin-top: 15px;
+    }
+    video { transform: scaleX(-1); display: none; } /* ซ่อนกล้องจริง */
+    canvas {
+      border: 3px solid #00E676;
+      border-radius: 12px;
+      max-width: 100%;
+      height: auto;
+    }
+    .score-board {
+      margin-top: 15px;
+      font-size: 20px;
+      background: #1E1E1E;
+      padding: 15px;
+      border-radius: 8px;
+      display: inline-block;
+      min-width: 280px;
+    }
+    .status { color: #FFD54F; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <h1>ErgoAI Active Intervention</h1>
+  <p>เกมยืดกล้ามเนื้อแก้ Office Syndrome</p>
+
+  <div class="score-board">
+    <div>สถานะท่าทาง: <span id="pose-status" class="status">กำลังตรวจจับ...</span></div>
+    <div>มุมเอียงคอ/ไหล่: <span id="angle-val">0</span>°</div>
+  </div>
+
+  <br>
+
+  <div class="container">
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="output_canvas" width="640" height="480"></canvas>
+  </div>
+
+  <script>
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const poseStatus = document.getElementById('pose-status');
+    const angleVal = document.getElementById('angle-val');
+
+    // คำนวณองศาระหว่างจุด 3 จุด
+    function calculateAngle(a, b, c) {
+      const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+      let angle = Math.abs((radians * 180.0) / Math.PI);
+      if (angle > 180.0) angle = 360 - angle;
+      return Math.round(angle);
+    }
+
+    // ฟังก์ชันประมวลผลเมื่อ MediaPipe จับจุดข้อต่อได้
+    function onResults(results) {
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+      // วาดภาพจากกล้องลงบน Canvas (กลับข้าง Mirror)
+      canvasCtx.translate(canvasElement.width, 0);
+      canvasCtx.scale(-1, 1);
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+      canvasCtx.restore();
+
+      if (results.poseLandmarks) {
+        // ดึงพิกัดจุดสำคัญ: หูซ้าย (11), ไหล่ซ้าย (11), ไหล่ขวา (12)
+        const leftShoulder = results.poseLandmarks[11];
+        const rightShoulder = results.poseLandmarks[12];
+        const leftEar = results.poseLandmarks[7];
+
+        // วาดจุดไหล่และคอบน Canvas
+        drawPoint(leftShoulder);
+        drawPoint(rightShoulder);
+        drawPoint(leftEar);
+
+        // คำนวณองศาการเอียงคอ (คอ-ไหล่ซ้าย-ไหล่ขวา)
+        const neckAngle = calculateAngle(leftEar, leftShoulder, rightShoulder);
+        angleVal.innerText = neckAngle;
+
+        // Logic ตรวจจับการยืดคอ (Targeted Game Logic)
+        if (neckAngle < 60) {
+          poseStatus.innerText = "ดีมาก! เอียงคอยืดกล้ามเนื้อค้างไว้";
+          poseStatus.style.color = "#00E676";
+        } else {
+          poseStatus.innerText = "เอียงคอไปทางซ้ายเพื่อเริ่มยืด";
+          poseStatus.style.color = "#FFD54F";
+        }
+      }
+    }
+
+    function drawPoint(landmark) {
+      canvasCtx.beginPath();
+      canvasCtx.arc(landmark.x * canvasElement.width, landmark.y * canvasElement.height, 8, 0, 2 * Math.PI);
+      canvasCtx.fillStyle = '#00E676';
+      canvasCtx.fill();
+    }
+
+    // ตั้งค่า MediaPipe Pose
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    pose.onResults(onResults);
+
+    // เปิดใช้งานกล้อง Web Camera
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await pose.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+  </script>
+</body>
+</html>
