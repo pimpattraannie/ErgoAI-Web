@@ -52,7 +52,7 @@
   <div class="score-board">
     <div>สถานะ: <span id="pose-status" class="status">กำลังเตรียมพร้อม...</span></div>
     <div class="timer" id="timer-val">⏱️ 5</div>
-    <div class="angle-debug">มุมคอซ้ายของคุณ: <span id="left-angle">0</span>° | มุมคอขวาของคุณ: <span id="right-angle">0</span>°</div>
+    <div class="angle-debug">มุมคอฝั่งซ้ายจริง: <span id="left-angle">0</span>° | มุมคอฝั่งขวาจริง: <span id="right-angle">0</span>°</div>
   </div>
 
   <br>
@@ -102,44 +102,46 @@
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.poseLandmarks) {
-        // 🎯 สลับการจับคู่ Landmark เพื่อให้ตรงกับร่างกายจริงของผู้ใช้บนหน้าจอ Mirror 100%:
-        // ไหล่ซ้ายจริงของผู้ใช้บนกระจก = MediaPipe Index 12 (Right Shoulder ในมุมมองกล้อง)
-        // ไหล่ขวาจริงของผู้ใช้บนกระจก = MediaPipe Index 11 (Left Shoulder ในมุมมองกล้อง)
-        const userLeftEar = results.poseLandmarks[8];        // หูซ้ายจริงของผู้ใช้
-        const userRightEar = results.poseLandmarks[7];       // หูขวาจริงของผู้ใช้
-        const userLeftShoulder = results.poseLandmarks[12];  // ไหล่ซ้ายจริงของผู้ใช้
-        const userRightShoulder = results.poseLandmarks[11]; // ไหล่ขวาจริงของผู้ใช้
+        // MediaPipe Pose Keypoint Index ที่ถูกต้องตามร่างกายจริง:
+        // Index 7 = หูซ้ายจริง (ปรากฏฝั่งขวาของหน้าข้าวจอ Mirror)
+        // Index 8 = หูขวาจริง (ปรากฏฝั่งซ้ายของหน้าจอ Mirror)
+        // Index 11 = ไหล่ซ้ายจริง (ปรากฏฝั่งขวาของหน้าจอ Mirror)
+        // Index 12 = ไหล่ขวาจริง (ปรากฏฝั่งซ้ายของหน้าจอ Mirror)
+        const personLeftEar = results.poseLandmarks[7];        
+        const personRightEar = results.poseLandmarks[8];       
+        const personLeftShoulder = results.poseLandmarks[11];  
+        const personRightShoulder = results.poseLandmarks[12]; 
 
-        // 1. วาดเส้นโครงสร้างตรงตามร่างกายผู้ใช้จริง
-        drawLine(userLeftEar, userLeftShoulder, '#FF3D00');       // หูซ้าย -> ไหล่ซ้าย (สีส้ม)
-        drawLine(userRightEar, userRightShoulder, '#FF9100');     // หูขวา -> ไหล่ขวา (สีส้มอ่อน)
-        drawLine(userLeftShoulder, userRightShoulder, '#00E676'); // ฐานไหล่ซ้าย -> ไหล่ขวา (สีเขียว)
+        // 1. วาดเส้นโครงสร้างตามกายภาพจริง
+        drawLine(personLeftEar, personLeftShoulder, '#FF3D00');       // หูซ้าย -> ไหล่ซ้าย (ส้ม)
+        drawLine(personRightEar, personRightShoulder, '#FF9100');     // หูขวา -> ไหล่ขวา (ส้มอ่อน)
+        drawLine(personLeftShoulder, personRightShoulder, '#00E676'); // ฐานไหล่ซ้าย -> ไหล่ขวา (เขียว)
 
         // 2. วาดจุดข้อต่อ
-        drawPoint(userLeftEar, '#FF3D00');       // จุดหูซ้าย
-        drawPoint(userRightEar, '#FF9100');      // จุดหูขวา
-        drawPoint(userLeftShoulder, '#00E676');  // จุดไหล่ซ้าย
-        drawPoint(userRightShoulder, '#29B6F6'); // จุดไหล่ขวา
+        drawPoint(personLeftEar, '#FF3D00');       // จุดหูซ้ายจริง
+        drawPoint(personRightEar, '#FF9100');      // จุดหูขวาจริง
+        drawPoint(personLeftShoulder, '#00E676');  // จุดไหล่ซ้ายจริง
+        drawPoint(personRightShoulder, '#29B6F6'); // จุดไหล่ขวาจริง
 
-        // คำนวณองศายืดคอตามฝั่งจริงของผู้ใช้
-        const userLeftAngle = calculateVectorAngle(userLeftShoulder, userLeftEar, userRightShoulder);
-        const userRightAngle = calculateVectorAngle(userRightShoulder, userRightEar, userLeftShoulder);
+        // คำนวณองศายืดคอแต่ละฝั่งของคนจริง
+        const leftNeckAngle = calculateVectorAngle(personLeftShoulder, personLeftEar, personRightShoulder);
+        const rightNeckAngle = calculateVectorAngle(personRightShoulder, personRightEar, personLeftShoulder);
 
-        leftAngleVal.innerText = userLeftAngle;
-        rightAngleVal.innerText = userRightAngle;
+        leftAngleVal.innerText = leftNeckAngle;
+        rightAngleVal.innerText = rightNeckAngle;
 
         const currentTime = Date.now();
 
-        // 🎯 LOGIC การยืดตามร่างกายจริงของผู้ใช้
+        // 🎯 LOGIC กำหนดคำสั่งการยืด
         if (currentStep === 0) {
-          // STEP 0: สั่งยืดคอไปทาง "ซ้ายจริงของคุณ" (เอาหูซ้ายลงหาไหล่ซ้ายของคุณ)
-          if (userLeftAngle < STRETCH_THRESHOLD) {
+          // STEP 0: สั่งให้ยืดคอไปทาง "ซ้ายมือจริงของคุณ" (เอียงคอเข้าหาไหล่ซ้ายจริง)
+          if (leftNeckAngle < STRETCH_THRESHOLD) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsedSeconds;
 
             if (remaining > 0) {
-              poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอซ้าย...";
+              poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอฝั่งซ้าย...";
               poseStatus.style.color = "#00E676";
               timerVal.innerText = `⏱️ ${remaining}`;
             } else {
@@ -150,20 +152,21 @@
             }
           } else {
             holdStartTime = null;
-            poseStatus.innerText = "1. เอียงคอไปทาง 'ซ้าย' ของคุณ (เอาหูซ้ายลงหาไหล่ซ้าย)";
+            // ข้อความแนะนำแบบเป็นธรรมชาติ ชี้แจงฝั่งในภาพกระจกชัดเจน
+            poseStatus.innerText = "1. เอียงคอไปทาง 'ซ้ายมือของคุณ' (เอียงศีรษะลงหาไหล่ซ้าย)";
             poseStatus.style.color = "#FFD54F";
             timerVal.innerText = `⏱️ 5`;
           }
         } 
         else if (currentStep === 1) {
-          // STEP 1: สั่งยืดคอไปทาง "ขวาจริงของคุณ" (เอาหูขวาลงหาไหล่ขวาของคุณ)
-          if (userRightAngle < STRETCH_THRESHOLD) {
+          // STEP 1: สั่งให้ยืดคอไปทาง "ขวามือจริงของคุณ" (เอียงคอเข้าหาไหล่ขวาจริง)
+          if (rightNeckAngle < STRETCH_THRESHOLD) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsedSeconds;
 
             if (remaining > 0) {
-              poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอขวา...";
+              poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอฝั่งขวา...";
               poseStatus.style.color = "#00E676";
               timerVal.innerText = `⏱️ ${remaining}`;
             } else {
@@ -173,7 +176,7 @@
             }
           } else {
             holdStartTime = null;
-            poseStatus.innerText = "2. เอียงคอไปทาง 'ขวา' ของคุณ (เอาหูขวาลงหาไหล่ขวา)";
+            poseStatus.innerText = "2. เอียงคอไปทาง 'ขวามือของคุณ' (เอียงศีรษะลงหาไหล่ขวา)";
             poseStatus.style.color = "#FF9100";
             timerVal.innerText = `⏱️ 5`;
           }
