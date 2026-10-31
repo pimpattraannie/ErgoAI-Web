@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ErgoAI - Active Intervention Mini-Game</title>
   
-  <!-- โหลด MediaPipe Pose & Camera Utils จาก CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
   
@@ -24,7 +23,7 @@
       display: inline-block;
       margin-top: 15px;
     }
-    video { display: none; } /* ซ่อนวิดีโอหลัก */
+    video { display: none; }
     canvas {
       border: 3px solid #00E676;
       border-radius: 12px;
@@ -38,7 +37,7 @@
       padding: 15px;
       border-radius: 8px;
       display: inline-block;
-      min-width: 280px;
+      min-width: 320px;
     }
     .status { color: #FFD54F; font-weight: bold; }
   </style>
@@ -46,11 +45,11 @@
 <body>
 
   <h1>ErgoAI Active Intervention</h1>
-  <p>เกมยืดกล้ามเนื้อแก้ Office Syndrome</p>
+  <p>เกมยืดกล้ามเนื้อแก้ Office Syndrome (Neck Stretch Test)</p>
 
   <div class="score-board">
-    <div>สถานะท่าทาง: <span id="pose-status" class="status">กำลังตรวจจับ...</span></div>
-    <div>มุมเอียงคอ: <span id="angle-val">0</span>°</div>
+    <div>สถานะ: <span id="pose-status" class="status">กำลังตรวจจับ...</span></div>
+    <div>มุมไหล่-หูซ้าย: <span id="left-angle">0</span>° | มุมไหล่-หูขวา: <span id="right-angle">0</span>°</div>
   </div>
 
   <br>
@@ -65,70 +64,69 @@
     const canvasElement = document.getElementById('output_canvas');
     const canvasCtx = canvasElement.getContext('2d');
     const poseStatus = document.getElementById('pose-status');
-    const angleVal = document.getElementById('angle-val');
+    const leftAngleVal = document.getElementById('left-angle');
+    const rightAngleVal = document.getElementById('right-angle');
 
-    // ฟังก์ชันคำนวณองศาระหว่างจุด 3 จุด
+    // คำนวณองศา B-A-C (มุมที่จุด A)
     function calculateAngle(a, b, c) {
       if (!a || !b || !c) return 180;
-      const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+      const radians = Math.atan2(c.y - a.y, c.x - a.x) - Math.atan2(b.y - a.y, b.x - a.x);
       let angle = Math.abs((radians * 180.0) / Math.PI);
       if (angle > 180.0) angle = 360 - angle;
       return Math.round(angle);
     }
 
-    // ฟังก์ชันประมวลผลเมื่อ MediaPipe จับจุดข้อต่อได้
     function onResults(results) {
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-      // วาดภาพจากกล้องลงบน Canvas และทำ Mirror ให้เหมือนส่องกระจก
+      // วาดภาพ Canvas แบบ Mirror
       canvasCtx.translate(canvasElement.width, 0);
       canvasCtx.scale(-1, 1);
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.poseLandmarks) {
-        // ดึงพิกัดตามดัชนีของ MediaPipe Pose
-        const leftEar = results.poseLandmarks[7];        // หูซ้าย (Index 7)
-        const rightEar = results.poseLandmarks[8];       // หูขวา (Index 8)
-        const leftShoulder = results.poseLandmarks[11];  // ไหล่ซ้าย (Index 11)
-        const rightShoulder = results.poseLandmarks[12]; // ไหล่ขวา (Index 12)
+        const leftEar = results.poseLandmarks[7];        // หูซ้าย
+        const rightEar = results.poseLandmarks[8];       // หูขวา
+        const leftShoulder = results.poseLandmarks[11];  // ไหล่ซ้าย
+        const rightShoulder = results.poseLandmarks[12]; // ไหล่ขวา
 
-        // 1. วาดเส้นเชื่อมโครงสร้าง (คอซ้าย, คอขวา, และแนวฐานไหล่)
-        drawLine(leftEar, leftShoulder, '#FF3D00');       // เส้นหูซ้าย -> ไหล่ซ้าย (สีส้ม)
-        drawLine(rightEar, rightShoulder, '#FF9100');     // เส้นหูขวา -> ไหล่ขวา (สีส้มอ่อน)
-        drawLine(leftShoulder, rightShoulder, '#00E676'); // เส้นแนวไหล่ซ้าย -> ไหล่ขวา (สีเขียว)
+        // 1. วาดโครงเส้น
+        drawLine(leftEar, leftShoulder, '#FF3D00');
+        drawLine(rightEar, rightShoulder, '#FF9100');
+        drawLine(leftShoulder, rightShoulder, '#00E676');
 
-        // 2. วาดจุดข้อต่อ
-        drawPoint(leftEar, '#FF3D00');       // หูซ้าย = สีส้ม
-        drawPoint(rightEar, '#FF9100');      // หูขวา = สีส้มอ่อน
-        drawPoint(leftShoulder, '#00E676');  // ไหล่ซ้าย = สีเขียว
-        drawPoint(rightShoulder, '#29B6F6'); // ไหล่ขวา = สีฟ้า
+        // 2. วาดจุด
+        drawPoint(leftEar, '#FF3D00');
+        drawPoint(rightEar, '#FF9100');
+        drawPoint(leftShoulder, '#00E676');
+        drawPoint(rightShoulder, '#29B6F6');
 
-        // คำนวณองศาการเอียงคอทั้งฝั่งซ้ายและขวา
-        const leftAngle = calculateAngle(leftEar, leftShoulder, rightShoulder);
-        const rightAngle = calculateAngle(rightEar, rightShoulder, leftShoulder);
+        // คำนวณมุมที่ฐานไหล่ซ้าย (หูซ้าย - ไหล่ซ้าย - ไหล่ขวา)
+        const leftNeckAngle = calculateAngle(leftShoulder, leftEar, rightShoulder);
+        // คำนวณมุมที่ฐานไหล่ขวา (หูขวา - ไหล่ขวา - ไหล่ซ้าย)
+        const rightNeckAngle = calculateAngle(rightShoulder, rightEar, leftShoulder);
 
-        // ดึงมุมเอียงที่น้อยที่สุด (ฝั่งที่กำลังยืดคอลงมา)
-        const minAngle = Math.min(leftAngle, rightAngle);
-        angleVal.innerText = minAngle;
+        leftAngleVal.innerText = leftNeckAngle;
+        rightAngleVal.innerText = rightNeckAngle;
 
-        // เช็กระยะทางแนวตั้งระหว่างหูกับไหล่
-        const leftDistY = Math.abs(leftEar.y - leftShoulder.y);
-        const rightDistY = Math.abs(rightEar.y - rightShoulder.y);
-
-        // เงื่อนไข: ถ้าเอียงคอยืดฝั่งใดฝั่งหนึ่งลงมาเกินเกณฑ์
-        if (minAngle < 65 || leftDistY < 0.18 || rightDistY < 0.18) {
-          poseStatus.innerText = "ดีมาก! เอียงคอยืดกล้ามเนื้อค้างไว้";
+        // 🎯 LOGIC ใหม่: ตรวจจับการยืดคอที่แท้จริง
+        // เมื่อเอียงคอไปทางซ้าย มุมที่ไหล่ซ้าย (leftNeckAngle) จะแคบลงมากๆ (ต่ำกว่า 35°)
+        // เมื่อเอียงคอไปทางขวา มุมที่ไหล่ขวา (rightNeckAngle) จะแคบลงมากๆ (ต่ำกว่า 35°)
+        if (leftNeckAngle < 35) {
+          poseStatus.innerText = "ดีมาก! กำลังยืดกล้ามเนื้อคอฝั่งซ้าย ค้างไว้...";
+          poseStatus.style.color = "#00E676";
+        } else if (rightNeckAngle < 35) {
+          poseStatus.innerText = "ดีมาก! กำลังยืดกล้ามเนื้อคอฝั่งขวา ค้างไว้...";
           poseStatus.style.color = "#00E676";
         } else {
-          poseStatus.innerText = "เอียงคอไปทางซ้ายหรือขวาเพื่อเริ่มยืด";
+          poseStatus.innerText = "เอียงศีรษะลงหาไหล่ (ซ้ายหรือขวา) เพื่อยืดคอ";
           poseStatus.style.color = "#FFD54F";
         }
       }
       canvasCtx.restore();
     }
 
-    // ฟังก์ชันสำหรับวาดเส้นเชื่อมจุด
     function drawLine(fromLandmark, toLandmark, color = '#FFFFFF') {
       if (!fromLandmark || !toLandmark) return;
       canvasCtx.beginPath();
@@ -139,6 +137,37 @@
       canvasCtx.stroke();
     }
 
-    // ฟังก์ชันวาดจุดข้อต่อ
     function drawPoint(landmark, color = '#00E676') {
       if (!landmark) return;
+      canvasCtx.beginPath();
+      const x = landmark.x * canvasElement.width;
+      const y = landmark.y * canvasElement.height;
+      canvasCtx.arc(x, y, 8, 0, 2 * Math.PI);
+      canvasCtx.fillStyle = color;
+      canvasCtx.fill();
+    }
+
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    pose.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await pose.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+  </script>
+</body>
+</html>
