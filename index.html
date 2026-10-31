@@ -24,7 +24,7 @@
       display: inline-block;
       margin-top: 15px;
     }
-    video { transform: scaleX(-1); display: none; } /* ซ่อนกล้องจริง */
+    video { display: none; } /* ซ่อนวิดีโอหลัก */
     canvas {
       border: 3px solid #00E676;
       border-radius: 12px;
@@ -75,24 +75,23 @@
       return Math.round(angle);
     }
 
-   // ฟังก์ชันประมวลผลเมื่อ MediaPipe จับจุดข้อต่อได้
+    // ฟังก์ชันประมวลผลเมื่อ MediaPipe จับจุดข้อต่อได้
     function onResults(results) {
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-      // วาดภาพจากกล้องลงบน Canvas (กลับข้าง Mirror)
+      // วาดภาพจากกล้องลงบน Canvas และทำ Mirror ครั้งเดียว
       canvasCtx.translate(canvasElement.width, 0);
       canvasCtx.scale(-1, 1);
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-      canvasCtx.restore();
 
       if (results.poseLandmarks) {
-        // ดึงพิกัดที่ถูกต้องตามดักชนีของ MediaPipe Pose
+        // ดึงพิกัดที่ถูกต้องตามดัชนีของ MediaPipe Pose
         const leftEar = results.poseLandmarks[7];       // หูซ้าย (Index 7)
         const leftShoulder = results.poseLandmarks[11];  // ไหล่ซ้าย (Index 11)
         const rightShoulder = results.poseLandmarks[12]; // ไหล่ขวา (Index 12)
 
-        // 1. วาดเส้นเชื่อมระหว่างจุด (เพิ่มตรงนี้)
+        // 1. วาดเส้นเชื่อมระหว่างจุด (ใช้พิกัดตาม Canvas Mirror)
         drawLine(leftEar, leftShoulder, '#FF3D00');       // เส้นจากหูซ้ายไปไหล่ซ้าย (สีส้ม)
         drawLine(leftShoulder, rightShoulder, '#00E676'); // เส้นจากไหล่ซ้ายไปไหล่ขวา (สีเขียว)
 
@@ -101,38 +100,38 @@
         drawPoint(leftShoulder, '#00E676');  // จุดไหล่ซ้าย = สีเขียว
         drawPoint(rightShoulder, '#29B6F6'); // จุดไหล่ขวา = สีฟ้า
 
-        // คำนวณองศาการเอียงคอ (หูซ้าย - ไหล่ซ้าย - ไหล่ขวา)
+        // คำนวณองศาการเอียงคอ
         const neckAngle = calculateAngle(leftEar, leftShoulder, rightShoulder);
         angleVal.innerText = neckAngle;
 
-        // Logic ตรวจจับการยืดคอ
+        // ตรวจสอบว่าผู้ใช้เอียงคอไปทางซ้ายของตนเองจริงๆ (จุดหูซ้ายเข้าใกล้ไหล่ซ้าย)
         if (neckAngle < 65) {
           poseStatus.innerText = "ดีมาก! เอียงคอยืดกล้ามเนื้อค้างไว้";
           poseStatus.style.color = "#00E676";
         } else {
-          poseStatus.innerText = "เอียงคอไปทางซ้ายเพื่อเริ่มยืด";
+          poseStatus.innerText = "เอียงคอไปทางซ้ายของคุณเพื่อเริ่มยืด";
           poseStatus.style.color = "#FFD54F";
         }
       }
+      canvasCtx.restore();
     }
 
-    // ฟังก์ชันสำหรับวาดเส้นเชื่อมจุด (นำไปวางไว้ต่อจากฟังก์ชัน drawPoint ได้เลยครับ)
+    // ฟังก์ชันสำหรับวาดเส้นเชื่อมจุด
     function drawLine(fromLandmark, toLandmark, color = '#FFFFFF') {
       if (!fromLandmark || !toLandmark) return;
       canvasCtx.beginPath();
-      canvasCtx.moveTo((1 - fromLandmark.x) * canvasElement.width, fromLandmark.y * canvasElement.height);
-      canvasCtx.lineTo((1 - toLandmark.x) * canvasElement.width, toLandmark.y * canvasElement.height);
+      canvasCtx.moveTo(fromLandmark.x * canvasElement.width, fromLandmark.y * canvasElement.height);
+      canvasCtx.lineTo(toLandmark.x * canvasElement.width, toLandmark.y * canvasElement.height);
       canvasCtx.lineWidth = 4;
       canvasCtx.strokeStyle = color;
       canvasCtx.stroke();
     }
 
-    // ปรับฟังก์ชันวาดจุดให้รับค่าสีแยกกันได้
+    // ฟังก์ชันวาดจุดสีแยกตามตำแหน่ง
     function drawPoint(landmark, color = '#00E676') {
       if (!landmark) return;
       canvasCtx.beginPath();
-      // คำนวณพิกัดจากการกลับข้างภาพ Mirror
-      const x = (1 - landmark.x) * canvasElement.width;
+      const x = landmark.x * canvasElement.width;
       const y = landmark.y * canvasElement.height;
       canvasCtx.arc(x, y, 8, 0, 2 * Math.PI);
       canvasCtx.fillStyle = color;
