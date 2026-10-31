@@ -76,7 +76,7 @@
     const HOLD_DURATION = 5;      // ค้างไว้ 5 วินาที
     const STRETCH_THRESHOLD = 58; // เกณฑ์องศาการยืดคอ
 
-    // ฟังก์ชันคำนวณองศาระหว่างจุด 3 จุด (จุด B-A-C)
+    // คำนวณองศาระหว่างจุด 3 จุด
     function calculateAngle(a, b, c) {
       if (!a || !b || !c) return 180;
       const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
@@ -89,48 +89,42 @@
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-      // วาดภาพ Canvas แบบ Mirror
+      // วาดภาพ Canvas แบบ Mirror (สั่งทีเดียวที่นี่)
       canvasCtx.translate(canvasElement.width, 0);
       canvasCtx.scale(-1, 1);
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.poseLandmarks) {
-        // ดึงพิกัดดั้งเดิมจาก MediaPipe
-        const rawLeftEar = results.poseLandmarks[7];        // หูซ้าย (Index 7)
-        const rawRightEar = results.poseLandmarks[8];       // หูขวา (Index 8)
-        const rawLeftShoulder = results.poseLandmarks[11];  // ไหล่ซ้าย (Index 11)
-        const rawRightShoulder = results.poseLandmarks[12]; // ไหล่ขวา (Index 12)
+        // ดึงจุดพิกัดมาตรฐานจาก MediaPipe ตรงๆ ไม่ต้องแปลง (ขนานไปกับ Canvas Mirror)
+        const leftEar = results.poseLandmarks[7];        // หูซ้ายจริง (Index 7)
+        const rightEar = results.poseLandmarks[8];       // หูขวาจริง (Index 8)
+        const leftShoulder = results.poseLandmarks[11];  // ไหล่ซ้ายจริง (Index 11)
+        const rightShoulder = results.poseLandmarks[12]; // ไหล่ขวาจริง (Index 12)
 
-        // แปลงพิกัดให้ตรงกับร่างกายผู้ใช้บนหน้าจอ Mirror 100% (แก้ไขพิกัดอย่างถูกต้อง)
-        const userLeftEar = { x: 1 - rawRightEar.x, y: rawRightEar.y };
-        const userRightEar = { x: 1 - rawLeftEar.x, y: rawLeftEar.y };
-        const userLeftShoulder = { x: 1 - rawRightShoulder.x, y: rawRightShoulder.y };
-        const userRightShoulder = { x: 1 - rawLeftShoulder.x, y: rawLeftShoulder.y };
-
-        // 1. วาดเส้นโครงสร้างถูกต้อง (คอซ้าย->ไหล่ซ้าย, คอขวา->ไหล่ขวา, ฐานไหล่ซ้าย->ไหล่ขวา)
-        drawLine(userLeftEar, userLeftShoulder, '#FF3D00');       // หูซ้ายไปไหล่ซ้าย (ส้ม)
-        drawLine(userRightEar, userRightShoulder, '#FF9100');     // หูขวาไปไหล่ขวา (ส้มอ่อน)
-        drawLine(userLeftShoulder, userRightShoulder, '#00E676'); // ไหล่ซ้ายไปไหล่ขวา (เขียว)
+        // 1. วาดเส้นโครงสร้างตามพิกัดตรง
+        drawLine(leftEar, leftShoulder, '#FF3D00');       // หูซ้ายไปไหล่ซ้าย (สีส้ม)
+        drawLine(rightEar, rightShoulder, '#FF9100');     // หูขวาไปไหล่ขวา (สีส้มอ่อน)
+        drawLine(leftShoulder, rightShoulder, '#00E676'); // ฐานไหล่ซ้ายไปไหล่ขวา (สีเขียว)
 
         // 2. วาดจุดข้อต่อ
-        drawPoint(userLeftEar, '#FF3D00');       // จุดหูซ้าย
-        drawPoint(userRightEar, '#FF9100');      // จุดหูขวา
-        drawPoint(userLeftShoulder, '#00E676');  // จุดไหล่ซ้าย
-        drawPoint(userRightShoulder, '#29B6F6'); // จุดไหล่ขวา
+        drawPoint(leftEar, '#FF3D00');       // จุดหูซ้าย
+        drawPoint(rightEar, '#FF9100');      // จุดหูขวา
+        drawPoint(leftShoulder, '#00E676');  // จุดไหล่ซ้าย
+        drawPoint(rightShoulder, '#29B6F6'); // จุดไหล่ขวา
 
-        // คำนวณองศาฐานไหล่เทียบกับคอแต่ละฝั่ง
-        const userLeftAngle = calculateAngle(userLeftEar, userLeftShoulder, userRightShoulder);
-        const userRightAngle = calculateAngle(userRightEar, userRightShoulder, userLeftShoulder);
+        // คำนวณองศาแต่ละฝั่ง
+        const leftAngle = calculateAngle(leftEar, leftShoulder, rightShoulder);
+        const rightAngle = calculateAngle(rightEar, rightShoulder, leftShoulder);
 
-        leftAngleVal.innerText = userLeftAngle;
-        rightAngleVal.innerText = userRightAngle;
+        leftAngleVal.innerText = leftAngle;
+        rightAngleVal.innerText = rightAngle;
 
         const currentTime = Date.now();
 
         // 🎯 LOGIC การจัดการขั้นตอนยืด (STEP 0 -> STEP 1 -> STEP 2)
         if (currentStep === 0) {
-          // STEP 0: ยืดคอไปทาง "ซ้าย" ของผู้ใช้ (มุมแคบลง < 58°)
-          if (userLeftAngle < STRETCH_THRESHOLD) {
+          // STEP 0: ยืดคอไปทาง "ซ้าย" ของผู้ใช้
+          if (leftAngle < STRETCH_THRESHOLD) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsedSeconds;
@@ -153,7 +147,79 @@
           }
         } 
         else if (currentStep === 1) {
-          // STEP 1: ยืดคอไปทาง "ขวา" ของผู้ใช้ (มุมแคบลง < 58°)
-          if (userRightAngle < STRETCH_THRESHOLD) {
+          // STEP 1: ยืดคอไปทาง "ขวา" ของผู้ใช้
+          if (rightAngle < STRETCH_THRESHOLD) {
             if (!holdStartTime) holdStartTime = currentTime;
-            const elapsedSeconds = Math.floor
+            const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
+            const remaining = HOLD_DURATION - elapsedSeconds;
+
+            if (remaining > 0) {
+              poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอขวา...";
+              poseStatus.style.color = "#00E676";
+              timerVal.innerText = `⏱️ ${remaining}`;
+            } else {
+              // ยืดครบ 5 วินาที -> จบเกม (STEP 2)
+              currentStep = 2;
+              holdStartTime = null;
+            }
+          } else {
+            holdStartTime = null;
+            poseStatus.innerText = "2. เอียงคอไปทาง 'ขวา' ของคุณ (หูขวาชิดไหล่ขวา)";
+            poseStatus.style.color = "#FF9100";
+            timerVal.innerText = `⏱️ 5`;
+          }
+        } 
+        else if (currentStep === 2) {
+          // STEP 2: จบเกมภารกิจยืดคอสำเร็จ
+          poseStatus.innerText = "🎉 ยอดเยี่ยม! คุณยืดคอครบทั้ง 2 ข้างเรียบร้อยแล้ว";
+          poseStatus.style.color = "#00E676";
+          timerVal.innerText = "✅ สำเร็จ";
+        }
+      }
+      canvasCtx.restore();
+    }
+
+    function drawLine(fromLandmark, toLandmark, color = '#FFFFFF') {
+      if (!fromLandmark || !toLandmark) return;
+      canvasCtx.beginPath();
+      canvasCtx.moveTo(fromLandmark.x * canvasElement.width, fromLandmark.y * canvasElement.height);
+      canvasCtx.lineTo(toLandmark.x * canvasElement.width, toLandmark.y * canvasElement.height);
+      canvasCtx.lineWidth = 4;
+      canvasCtx.strokeStyle = color;
+      canvasCtx.stroke();
+    }
+
+    function drawPoint(landmark, color = '#00E676') {
+      if (!landmark) return;
+      canvasCtx.beginPath();
+      const x = landmark.x * canvasElement.width;
+      const y = landmark.y * canvasElement.height;
+      canvasCtx.arc(x, y, 8, 0, 2 * Math.PI);
+      canvasCtx.fillStyle = color;
+      canvasCtx.fill();
+    }
+
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    pose.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await pose.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+  </script>
+</body>
+</html>
