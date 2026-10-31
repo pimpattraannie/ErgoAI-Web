@@ -114,10 +114,10 @@
         // เมื่อเอียงคอไปทางซ้าย มุมที่ไหล่ซ้าย (leftNeckAngle) จะแคบลงมากๆ (ต่ำกว่า 35°)
         // เมื่อเอียงคอไปทางขวา มุมที่ไหล่ขวา (rightNeckAngle) จะแคบลงมากๆ (ต่ำกว่า 35°)
         if (leftNeckAngle < 35) {
-          poseStatus.innerText = "ดีมาก! กำลังยืดกล้ามเนื้อคอฝั่งซ้าย ค้างไว้...";
+          poseStatus.innerText = "ดีมาก! กำลังยืดกล้ามเนื้อคอฝั่งขวา ค้างไว้...";
           poseStatus.style.color = "#00E676";
         } else if (rightNeckAngle < 35) {
-          poseStatus.innerText = "ดีมาก! กำลังยืดกล้ามเนื้อคอฝั่งขวา ค้างไว้...";
+          poseStatus.innerText = "ดีมาก! กำลังยืดกล้ามเนื้อคอฝั่งซ้าย ค้างไว้...";
           poseStatus.style.color = "#00E676";
         } else {
           poseStatus.innerText = "เอียงศีรษะลงหาไหล่ (ซ้ายหรือขวา) เพื่อยืดคอ";
