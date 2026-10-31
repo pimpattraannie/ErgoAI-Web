@@ -67,11 +67,10 @@
     const poseStatus = document.getElementById('pose-status');
     const timerVal = document.getElementById('timer-val');
 
-    // ระบบจัดการขั้นตอนเกม (0 = ยืดคอซ้าย, 1 = ยืดคอขวา, 2 = สำเร็จ)
-    let currentStep = 0; 
-    let holdTime = 5;    // เวลาค้างไว้ (วินาที)
-    let holdTimer = null;
-    let isCounting = false;
+    // ตัวแปรควบคุมระบบขั้นตอน (Game State)
+    let currentStep = 0;      // 0 = ยืดซ้าย, 1 = ยืดขวา, 2 = สำเร็จ
+    let holdStartTime = null; // เวลาเริ่มต้นจับค้าง
+    const HOLD_DURATION = 5;  // จำนวนวินาทีที่ต้องค้างไว้
 
     // ฟังก์ชันคำนวณองศาจุด B-A-C (มุมที่จุด A)
     function calculateAngle(a, b, c) {
@@ -80,31 +79,6 @@
       let angle = Math.abs((radians * 180.0) / Math.PI);
       if (angle > 180.0) angle = 360 - angle;
       return Math.round(angle);
-    }
-
-    function startTimer() {
-      if (isCounting) return;
-      isCounting = true;
-      holdTimer = setInterval(() => {
-        holdTime--;
-        timerVal.innerText = `⏱️ ${holdTime}`;
-        if (holdTime <= 0) {
-          clearInterval(holdTimer);
-          isCounting = false;
-          currentStep++; // เปลี่ยนไปขั้นตอนถัดไป
-          holdTime = 5;
-          timerVal.innerText = `⏱️ ${holdTime}`;
-        }
-      }, 1000);
-    }
-
-    function resetTimer() {
-      if (isCounting) {
-        clearInterval(holdTimer);
-        isCounting = false;
-        holdTime = 5;
-        timerVal.innerText = `⏱️ ${holdTime}`;
-      }
     }
 
     function onResults(results) {
@@ -117,7 +91,6 @@
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.poseLandmarks) {
-        // ดึงพิกัด
         const rawLeftEar = results.poseLandmarks[7];        
         const rawRightEar = results.poseLandmarks[8];       
         const rawLeftShoulder = results.poseLandmarks[11];  
@@ -144,33 +117,60 @@
         const userLeftAngle = calculateAngle(userLeftShoulder, userLeftEar, userRightShoulder);
         const userRightAngle = calculateAngle(userRightShoulder, userRightEar, userLeftShoulder);
 
-        // 🎯 LOGIC การยืดตามขั้นตอน (STEP 0 -> STEP 1 -> STEP 2)
+        const currentTime = Date.now();
+
+        // 🎯 LOGIC การจัดการขั้นตอนยืด (STEP 0 -> STEP 1 -> STEP 2)
         if (currentStep === 0) {
-          // ขั้นตอนที่ 1: สั่งให้ยืดคอไปทาง "ซ้าย" ของผู้ใช้
-          if (userLeftAngle < 36) {
-            poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอซ้าย...";
-            poseStatus.style.color = "#00E676";
-            startTimer();
+          // STEP 0: ยืดคอไปทาง "ซ้าย" ของผู้ใช้
+          if (userLeftAngle < 38) {
+            if (!holdStartTime) holdStartTime = currentTime;
+            const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
+            const remaining = HOLD_DURATION - elapsedSeconds;
+
+            if (remaining > 0) {
+              poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอซ้าย...";
+              poseStatus.style.color = "#00E676";
+              timerVal.innerText = `⏱️ ${remaining}`;
+            } else {
+              // ยืดคอซ้ายครบ 5 วินาที -> เปลี่ยนไป STEP 1
+              currentStep = 1;
+              holdStartTime = null;
+              timerVal.innerText = `⏱️ 5`;
+            }
           } else {
+            // หลุดท่า ให้รีเซ็ตเวลา
+            holdStartTime = null;
             poseStatus.innerText = "1. เอียงคอไปทาง 'ซ้าย' ของคุณ (หูซ้ายชิดไหล่ซ้าย)";
             poseStatus.style.color = "#FFD54F";
-            resetTimer();
+            timerVal.innerText = `⏱️ 5`;
           }
         } 
         else if (currentStep === 1) {
-          // ขั้นตอนที่ 2: สั่งให้ยืดคอไปทาง "ขวา" ของผู้ใช้
-          if (userRightAngle < 36) {
-            poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอขวา...";
-            poseStatus.style.color = "#00E676";
-            startTimer();
+          // STEP 1: ยืดคอไปทาง "ขวา" ของผู้ใช้
+          if (userRightAngle < 38) {
+            if (!holdStartTime) holdStartTime = currentTime;
+            const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
+            const remaining = HOLD_DURATION - elapsedSeconds;
+
+            if (remaining > 0) {
+              poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอขวา...";
+              poseStatus.style.color = "#00E676";
+              timerVal.innerText = `⏱️ ${remaining}`;
+            } else {
+              // ยืดคอขวาครบ 5 วินาที -> จบเกม (STEP 2)
+              currentStep = 2;
+              holdStartTime = null;
+            }
           } else {
+            // หลุดท่า ให้รีเซ็ตเวลา
+            holdStartTime = null;
             poseStatus.innerText = "2. เอียงคอไปทาง 'ขวา' ของคุณ (หูขวาชิดไหล่ขวา)";
             poseStatus.style.color = "#FF9100";
-            resetTimer();
+            timerVal.innerText = `⏱️ 5`;
           }
         } 
         else if (currentStep === 2) {
-          // ขั้นตอนที่ 3: ยืดครบทั้ง 2 ฝั่งแล้ว
+          // STEP 2: จบเกมภารกิจยืดคอสำเร็จ
           poseStatus.innerText = "🎉 ยอดเยี่ยม! คุณยืดคอครบทั้ง 2 ข้างเรียบร้อยแล้ว";
           poseStatus.style.color = "#00E676";
           timerVal.innerText = "✅ สำเร็จ";
