@@ -79,7 +79,7 @@
     const TOTAL_ROUNDS = 2;       // ทำซ้ำ 2 รอบ
     let holdStartTime = null; 
     const HOLD_DURATION = 15;     // ค้าง 15 วินาที
-    const STRETCH_ANGLE_MIN = 80; // องศาการเอียงคอที่ยืดจริง (> 80°)
+    const STRETCH_ANGLE_MIN = 70; // เกณฑ์องศาที่ถือว่าเอียงยืดจริง (เมื่อเอียงซ้าย มุมฝั่งซ้ายจะพุ่งสูงกว่า 70°)
 
     // คำนวณองศาเวกเตอร์ ณ จุดยอดไหล่ (vertex) เทียบระหว่างหูฝั่งเดียวกันกับไหล่ฝั่งตรงข้าม
     function calculateVectorAngle(vertex, ear, oppositeShoulder) {
@@ -107,17 +107,17 @@
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.poseLandmarks) {
-        // ในระบบ Mirroring พิกัดร่างกายจริงของคุณกับ MediaPipe:
-        // Index 7 = หูขวาของภาพกล้อง ➔ ตรงกับ หูซ้ายจริงของคุณบนหน้าจอกระจก
-        // Index 8 = หูซ้ายของภาพกล้อง ➔ ตรงกับ หูขวาจริงของคุณบนหน้าจอกระจก
-        // Index 11 = ไหล่ขวาของภาพกล้อง ➔ ตรงกับ ไหล่ซ้ายจริงของคุณบนหน้าจอกระจก
-        // Index 12 = ไหล่ซ้ายของภาพกล้อง ➔ ตรงกับ ไหล่ขวาจริงของคุณบนหน้าจอกระจก
-        const userLeftEar = results.poseLandmarks[7];        
-        const userRightEar = results.poseLandmarks[8];       
-        const userLeftShoulder = results.poseLandmarks[11];  
-        const userRightShoulder = results.poseLandmarks[12]; 
+        // จับคู่จุด MediaPipe สลับฝั่งตรงตามความรู้สึกกระจกเงาของผู้ใช้งานอย่างตรงไปตรงมา:
+        // Index 8 = หูซ้ายจริงของคุณ (แสดงฝั่งซ้ายของกระจก)
+        // Index 7 = หูขวาจริงของคุณ (แสดงฝั่งขวาของกระจก)
+        // Index 12 = ไหล่ซ้ายจริงของคุณ (แสดงฝั่งซ้ายของกระจก)
+        // Index 11 = ไหล่ขวาจริงของคุณ (แสดงฝั่งขวาของกระจก)
+        const userLeftEar = results.poseLandmarks[8];        
+        const userRightEar = results.poseLandmarks[7];       
+        const userLeftShoulder = results.poseLandmarks[12];  
+        const userRightShoulder = results.poseLandmarks[11]; 
 
-        // 1. วาดเส้นโครงสร้างให้ตรงตามจุดฝั่งซ้าย-ขวาจริง
+        // 1. วาดเส้นโครงสร้างตามจุดฝั่งซ้าย-ขวาจริง
         drawLine(userLeftEar, userLeftShoulder, '#FF3D00');       // เส้นซ้ายจริง (ส้ม)
         drawLine(userRightEar, userRightShoulder, '#FF9100');     // เส้นขวาจริง (ส้มอ่อน)
         drawLine(userLeftShoulder, userRightShoulder, '#00E676'); // ฐานไหล่ (เขียว)
@@ -128,9 +128,9 @@
         drawPoint(userLeftShoulder, '#00E676');  
         drawPoint(userRightShoulder, '#29B6F6'); 
 
-        // คำนวณองศาการเอียงคอที่สอดคล้องกับซ้าย-ขวาจริงของผู้ใช้:
-        // userLeftTiltAngle = เมื่อเอียงศีรษะไปทางซ้ายจริง มุมนี้จะกางสูงขึ้น (> 80°)
-        // userRightTiltAngle = เมื่อเอียงศีรษะไปทางขวาจริง มุมนี้จะกางสูงขึ้น (> 80°)
+        // คำนวณองศาการเอียงคอแยกฝั่งตรงๆ:
+        // userLeftTiltAngle = มุมการเอียงฝั่งซ้ายจริง (เอียงซ้าย -> ค่านี้จะพุ่งสูงขึ้น > 70°)
+        // userRightTiltAngle = มุมการเอียงฝั่งขวาจริง (เอียงขวา -> ค่านี้จะพุ่งสูงขึ้น > 70°)
         const userLeftTiltAngle = calculateVectorAngle(userLeftShoulder, userLeftEar, userRightShoulder);
         const userRightTiltAngle = calculateVectorAngle(userRightShoulder, userRightEar, userLeftShoulder);
 
@@ -143,14 +143,13 @@
           // STEP 0: สั่งเอียงคอไปทาง "ซ้ายมือของคุณ" ➔ เพื่อยืดกล้ามเนื้อคอ "ฝั่งขวา"
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          // ตรวจสอบมุมเอียงซ้ายจริง (userLeftTiltAngle)
+          // ตรวจสอบองศาการเอียงซ้ายจริง (เมื่อเอียงซ้าย ค่าฝั่งซ้ายจะพุ่งสูงกว่า 70°)
           if (userLeftTiltAngle > STRETCH_ANGLE_MIN) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsedSeconds;
 
             if (remaining > 0) {
-              // ข้อความถูกต้องตามหลักกายภาพ: เอียงซ้าย = กำลังยืดฝั่งขวา
               poseStatus.innerText = "ดีมาก! ค้างไว้ กำลังยืดกล้ามเนื้อคอฝั่งขวา...";
               poseStatus.style.color = "#00E676";
               timerVal.innerText = `⏱️ ${remaining}`;
@@ -170,14 +169,13 @@
           // STEP 1: สั่งเอียงคอไปทาง "ขวามือของคุณ" ➔ เพื่อยืดกล้ามเนื้อคอ "ฝั่งซ้าย"
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          // ตรวจสอบมุมเอียงขวาจริง (userRightTiltAngle)
+          // ตรวจสอบองศาการเอียงขวาจริง (เมื่อเอียงขวา ค่าฝั่งขวาจะพุ่งสูงกว่า 70°)
           if (userRightTiltAngle > STRETCH_ANGLE_MIN) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsedSeconds;
 
             if (remaining > 0) {
-              // ข้อความถูกต้องตามหลักกายภาพ: เอียงขวา = กำลังยืดฝั่งซ้าย
               poseStatus.innerText = "ดีมาก! ค้างไว้ กำลังยืดกล้ามเนื้อคอฝั่งซ้าย...";
               poseStatus.style.color = "#00E676";
               timerVal.innerText = `⏱️ ${remaining}`;
