@@ -79,8 +79,9 @@
     const TOTAL_ROUNDS = 2;       // ทำซ้ำ 2 รอบ
     let holdStartTime = null; 
     const HOLD_DURATION = 15;     // ค้าง 15 วินาที
-    const STRETCH_ANGLE_MIN = 65; // ตั้งเกณฑ์เอียงจริงไว้ที่ > 65 องศา (เพราะ 77 องศาในรูปคุณเอียงสำเร็จแล้ว)
+    const STRETCH_ANGLE_MIN = 65; // ตั้งเกณฑ์เอียงจริงไว้ที่ > 65 องศา
 
+    // คำนวณองศาเวกเตอร์ระหว่างจุด 3 จุด (vertex คือจุดไหล่)
     function calculateVectorAngle(vertex, ear, oppositeShoulder) {
       if (!vertex || !ear || !oppositeShoulder) return 90;
       const v1 = { x: ear.x - vertex.x, y: ear.y - vertex.y };
@@ -100,32 +101,36 @@
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-      // วาด Canvas Mirror
+      // วาด Canvas แบบ Mirror กระจกเงา
       canvasCtx.translate(canvasElement.width, 0);
       canvasCtx.scale(-1, 1);
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.poseLandmarks) {
-        // ล็อคจุด Index สรีระจริงบนกระจก
-        const userLeftEar = results.poseLandmarks[7];        
-        const userRightEar = results.poseLandmarks[8];       
-        const userLeftShoulder = results.poseLandmarks[11];  
-        const userRightShoulder = results.poseLandmarks[12]; 
+        // 🎯 ดึง Index มาตรฐานของ MediaPipe ตรงๆ ไม่มีการสลับตำแหน่งตัวแปรอีกต่อไป!
+        // Index 7 = Left Ear, Index 8 = Right Ear
+        // Index 11 = Left Shoulder, Index 12 = Right Shoulder
+        const rawLeftEar = results.poseLandmarks[7];        
+        const rawRightEar = results.poseLandmarks[8];       
+        const rawLeftShoulder = results.poseLandmarks[11];  
+        const rawRightShoulder = results.poseLandmarks[12]; 
 
-        // วาดเส้นโครงสร้าง
-        drawLine(userLeftEar, userLeftShoulder, '#FF3D00');       
-        drawLine(userRightEar, userRightShoulder, '#FF9100');     
-        drawLine(userLeftShoulder, userRightShoulder, '#00E676'); 
+        // 1. วาดเส้นโครงสร้างตามจุด MediaPipe ดั้งเดิม
+        drawLine(rawLeftEar, rawLeftShoulder, '#FF3D00');       // เส้นฝั่งซ้าย (ส้ม)
+        drawLine(rawRightEar, rawRightShoulder, '#FF9100');     // เส้นฝั่งขวา (ส้มอ่อน)
+        drawLine(rawLeftShoulder, rawRightShoulder, '#00E676'); // ฐานไหล่ (เขียว)
 
-        // วาดจุด
-        drawPoint(userLeftEar, '#FF3D00');       
-        drawPoint(userRightEar, '#FF9100');      
-        drawPoint(userLeftShoulder, '#00E676');  
-        drawPoint(userRightShoulder, '#29B6F6'); 
+        // 2. วาดจุดข้อต่อ
+        drawPoint(rawLeftEar, '#FF3D00');       
+        drawPoint(rawRightEar, '#FF9100');      
+        drawPoint(rawLeftShoulder, '#00E676');  
+        drawPoint(rawRightShoulder, '#29B6F6'); 
 
-        // คำนวณองศา
-        const leftNeckAngle = calculateVectorAngle(userLeftShoulder, userLeftEar, userRightShoulder);
-        const rightNeckAngle = calculateVectorAngle(userRightShoulder, userRightEar, userLeftShoulder);
+        // 🎯 คำนวณองศาจาก Index ตรงๆ ให้ตรงกับค่าที่แสดงบนหน้าจอ:
+        // leftNeckAngle = วัดจากจุดฝั่งซ้าย (rawLeftShoulder, rawLeftEar, rawRightShoulder)
+        // rightNeckAngle = วัดจากจุดฝั่งขวา (rawRightShoulder, rawRightEar, rawLeftShoulder)
+        const leftNeckAngle = calculateVectorAngle(rawLeftShoulder, rawLeftEar, rawRightShoulder);
+        const rightNeckAngle = calculateVectorAngle(rawRightShoulder, rawRightEar, rawLeftShoulder);
 
         leftAngleVal.innerText = leftNeckAngle;
         rightAngleVal.innerText = rightNeckAngle;
@@ -133,10 +138,9 @@
         const currentTime = Date.now();
 
         if (currentStep === 0) {
-          // STEP 0: สั่งเอียงคอไปทาง "ซ้ายมือของคุณ" 
+          // STEP 0: สั่งเอียงคอไปทาง "ซ้ายมือของคุณ" ➔ เช็กค่าฝั่งซ้ายตรงๆ (leftNeckAngle > 65)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          // 🎯 แก้จุดตาย: เอียงซ้ายจริง leftNeckAngle จะได้ 77° ซึ่ง > 65° ผ่านเงื่อนไขนับ countdown ทันที!
           if (leftNeckAngle > STRETCH_ANGLE_MIN) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
@@ -147,7 +151,7 @@
               poseStatus.style.color = "#00E676";
               timerVal.innerText = `⏱️ ${remaining}`;
             } else {
-              currentStep = 1; // ครบ 15 วิ สลับไปยืดขวา
+              currentStep = 1; // ยืดซ้ายครบ 15 วินาที -> ไปยืดขวา
               holdStartTime = null;
               timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
             }
@@ -159,10 +163,9 @@
           }
         } 
         else if (currentStep === 1) {
-          // STEP 1: สั่งเอียงคอไปทาง "ขวามือของคุณ" 
+          // STEP 1: สั่งเอียงคอไปทาง "ขวามือของคุณ" ➔ เช็กค่าฝั่งขวาตรงๆ (rightNeckAngle > 65)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          // เอียงขวาจริง rightNeckAngle จะกางเพิ่ม > 65° ผ่านเงื่อนไขนับ countdown ทันที
           if (rightNeckAngle > STRETCH_ANGLE_MIN) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
