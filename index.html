@@ -74,14 +74,13 @@
     const leftAngleVal = document.getElementById('left-angle');
     const rightAngleVal = document.getElementById('right-angle');
 
-    let currentStep = 0;          // 0 = ยืดซ้าย, 1 = ยืดขวา, 2 = สำเร็จ
+    let currentStep = 0;          // 0 = ยืดคอขวา (โดยเอียงซ้าย), 1 = ยืดคอซ้าย (โดยเอียงขวา), 2 = สำเร็จ
     let currentRound = 1;         // รอบปัจจุบัน
     const TOTAL_ROUNDS = 2;       // ทำซ้ำ 2 รอบ
     let holdStartTime = null; 
     const HOLD_DURATION = 15;     // ค้าง 15 วินาที
-    const STRETCH_THRESHOLD = 62; // องศายืดคอ (มุมฝั่งที่ยืดต้องแคบลงต่ำกว่า 62°)
+    const STRETCH_THRESHOLD = 62; // องศาตรวจจับยืดคอ (< 62°)
 
-    // คำนวณองศาเวกเตอร์ระหว่างจุด B-A-C (จุด A คือจุดยอดมุมที่ไหล่)
     function calculateVectorAngle(vertex, ear, oppositeShoulder) {
       if (!vertex || !ear || !oppositeShoulder) return 90;
       const v1 = { x: ear.x - vertex.x, y: ear.y - vertex.y };
@@ -101,34 +100,25 @@
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-      // วาด Canvas แบบ Mirror กระจกเงา
       canvasCtx.translate(canvasElement.width, 0);
       canvasCtx.scale(-1, 1);
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.poseLandmarks) {
-        // ดึงจุดตาม Index มาตรฐานของ MediaPipe Pose
-        // Index 7 = หูซ้ายจริง, Index 8 = หูขวาจริง
-        // Index 11 = ไหล่ซ้ายจริง, Index 12 = ไหล่ขวาจริง
         const leftEar = results.poseLandmarks[7];        
         const rightEar = results.poseLandmarks[8];       
         const leftShoulder = results.poseLandmarks[11];  
         const rightShoulder = results.poseLandmarks[12]; 
 
-        // 1. วาดเส้นโครงสร้างให้ตรงตามจุดจริง
-        drawLine(leftEar, leftShoulder, '#FF3D00');       // เส้นฝั่งซ้ายจริง (ส้ม)
-        drawLine(rightEar, rightShoulder, '#FF9100');     // เส้นฝั่งขวาจริง (ส้มอ่อน)
-        drawLine(leftShoulder, rightShoulder, '#00E676'); // ฐานไหล่ (เขียว)
+        drawLine(leftEar, leftShoulder, '#FF3D00');       
+        drawLine(rightEar, rightShoulder, '#FF9100');     
+        drawLine(leftShoulder, rightShoulder, '#00E676'); 
 
-        // 2. วาดจุดข้อต่อ
         drawPoint(leftEar, '#FF3D00');       
         drawPoint(rightEar, '#FF9100');      
         drawPoint(leftShoulder, '#00E676');  
         drawPoint(rightShoulder, '#29B6F6'); 
 
-        // คำนวณองศาฐานไหล่เทียบกับคอแต่ละฝั่ง:
-        // leftNeckAngle = มุมคอฝั่งซ้าย (เอียงคอซ้าย -> มุมนี้จะแคบลง)
-        // rightNeckAngle = มุมคอฝั่งขวา (เอียงคอขวา -> มุมนี้จะแคบลง)
         const leftNeckAngle = calculateVectorAngle(leftShoulder, leftEar, rightShoulder);
         const rightNeckAngle = calculateVectorAngle(rightShoulder, rightEar, leftShoulder);
 
@@ -138,8 +128,7 @@
         const currentTime = Date.now();
 
         if (currentStep === 0) {
-          // STEP 0: ยืดคอไปทาง "ซ้ายมือของคุณ" 
-          // เมื่อเอียงคอไปทางซ้ายจริง -> มุมคอฝั่งซ้าย (leftNeckAngle) จะลดลงต่ำกว่า 62°
+          // STEP 0: เอียงคอไปทาง "ซ้าย" เพื่อยืดกล้ามเนื้อคอ "ฝั่งขวา"
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           if (leftNeckAngle < STRETCH_THRESHOLD) {
             if (!holdStartTime) holdStartTime = currentTime;
@@ -147,25 +136,23 @@
             const remaining = HOLD_DURATION - elapsedSeconds;
 
             if (remaining > 0) {
-              poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอขวา...";
+              poseStatus.innerText = "ดีมาก! ค้างไว้ กำลังยืดกล้ามเนื้อคอฝั่งขวา...";
               poseStatus.style.color = "#00E676";
               timerVal.innerText = `⏱️ ${remaining}`;
             } else {
-              // ยืดซ้ายครบ 15 วินาที -> เปลี่ยนไปยืดขวา
               currentStep = 1;
               holdStartTime = null;
               timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
             }
           } else {
             holdStartTime = null;
-            poseStatus.innerText = `1. เอียงคอไปทาง 'ซ้ายมือของคุณ' (ค้างไว้ ${HOLD_DURATION} วินาที)`;
+            poseStatus.innerText = `1. เอียงคอไปทาง 'ซ้าย' (เพื่อยืดกล้ามเนื้อคอฝั่งขวา ค้างไว้ ${HOLD_DURATION} วินาที)`;
             poseStatus.style.color = "#FFD54F";
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
         else if (currentStep === 1) {
-          // STEP 1: ยืดคอไปทาง "ขวามือของคุณ" 
-          // เมื่อเอียงคอไปทางขวาจริง -> มุมคอฝั่งขวา (rightNeckAngle) จะลดลงต่ำกว่า 62°
+          // STEP 1: เอียงคอไปทาง "ขวา" เพื่อยืดกล้ามเนื้อคอ "ฝั่งซ้าย"
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           if (rightNeckAngle < STRETCH_THRESHOLD) {
             if (!holdStartTime) holdStartTime = currentTime;
@@ -173,29 +160,27 @@
             const remaining = HOLD_DURATION - elapsedSeconds;
 
             if (remaining > 0) {
-              poseStatus.innerText = "ดีมาก! ค้างไว้ ยืดคอซ้าย...";
+              poseStatus.innerText = "ดีมาก! ค้างไว้ กำลังยืดกล้ามเนื้อคอฝั่งซ้าย...";
               poseStatus.style.color = "#00E676";
               timerVal.innerText = `⏱️ ${remaining}`;
             } else {
-              // ยืดขวาครบ 15 วินาที -> เช็กจำนวนรอบ
               holdStartTime = null;
               if (currentRound < TOTAL_ROUNDS) {
                 currentRound++;
-                currentStep = 0; // กลับไปยืดซ้ายรอบที่ 2
+                currentStep = 0;
                 timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
               } else {
-                currentStep = 2; // จบภารกิจ
+                currentStep = 2;
               }
             }
           } else {
             holdStartTime = null;
-            poseStatus.innerText = `2. เอียงคอไปทาง 'ขวามือของคุณ' (ค้างไว้ ${HOLD_DURATION} วินาที)`;
+            poseStatus.innerText = `2. เอียงคอไปทาง 'ขวา' (เพื่อยืดกล้ามเนื้อคอฝั่งซ้าย ค้างไว้ ${HOLD_DURATION} วินาที)`;
             poseStatus.style.color = "#FF9100";
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
         else if (currentStep === 2) {
-          // STEP 2: จบภารกิจ
           roundVal.innerText = "ภารกิจเสร็จสิ้น";
           poseStatus.innerText = "🎉 ยอดเยี่ยม! คุณยืดคอครบทั้ง 2 ข้าง (ซ้ำ 2 รอบ) เรียบร้อยแล้ว";
           poseStatus.style.color = "#00E676";
