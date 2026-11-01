@@ -54,7 +54,7 @@
     <div class="round-info" id="round-val">รอบที่ 1 / 2</div>
     <div>สถานะ: <span id="pose-status" class="status">กำลังเตรียมพร้อม...</span></div>
     <div class="timer" id="timer-val">⏱️ 15</div>
-    <div class="angle-debug">มุมเอียงซ้ายจริง: <span id="left-angle">0</span>° | มุมเอียงขวาจริง: <span id="right-angle">0</span>°</div>
+    <div class="angle-debug">มุมคอฝั่งซ้ายคุณ: <span id="left-angle">0</span>° | มุมคอฝั่งขวาคุณ: <span id="right-angle">0</span>°</div>
   </div>
 
   <br>
@@ -79,7 +79,7 @@
     const TOTAL_ROUNDS = 2;       // ทำซ้ำ 2 รอบ
     let holdStartTime = null; 
     const HOLD_DURATION = 15;     // ค้าง 15 วินาที
-    const STRETCH_THRESHOLD = 62; // องศาตรวจจับยืดคอ (มุมฝั่งที่เอียงต้องลดลงต่ำกว่า 62°)
+    const STRETCH_THRESHOLD = 62; // เอียงคอจริง = มุมแคบลงต่ำกว่า 62 องศา
 
     function calculateVectorAngle(vertex, ear, oppositeShoulder) {
       if (!vertex || !ear || !oppositeShoulder) return 90;
@@ -100,36 +100,39 @@
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-      // วาด Canvas แบบ Mirror กระจกเงา
+      // 1. วาด Canvas แบบ Mirror กระจกเงา
       canvasCtx.translate(canvasElement.width, 0);
       canvasCtx.scale(-1, 1);
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.poseLandmarks) {
-        // จับคู่จุดตามภาพถ่ายกระจกเงาจริง:
-        // Index 7 = หูขวาของกล้อง  ➔ หูซ้ายจริงของคุณ (ส้ม)
-        // Index 8 = หูซ้ายของกล้อง  ➔ หูขวาจริงของคุณ (ส้มอ่อน)
-        // Index 11 = ไหล่ขวาของกล้อง ➔ ไหล่ซ้ายจริงของคุณ (เขียวอ่อน)
-        // Index 12 = ไหล่ซ้ายของกล้อง ➔ ไหล่ขวาจริงของคุณ (ฟ้า)
-        const personLeftEar = results.poseLandmarks[7];        
-        const personRightEar = results.poseLandmarks[8];       
-        const personLeftShoulder = results.poseLandmarks[11];  
-        const personRightShoulder = results.poseLandmarks[12]; 
+        // 2. พลิกพิกัด X ให้ตรงกับภาพกระจกเงาบน Canvas 100% (แก้ปัญหาหลักที่ทำให้สลับฝั่ง!)
+        const rawRightEar = results.poseLandmarks[7];       
+        const rawLeftEar = results.poseLandmarks[8];        
+        const rawRightShoulder = results.poseLandmarks[11]; 
+        const rawLeftShoulder = results.poseLandmarks[12];  
 
-        // 1. วาดเส้นโครงสร้าง
-        drawLine(personLeftEar, personLeftShoulder, '#FF3D00');       // เส้นซ้ายจริง (ส้ม)
-        drawLine(personRightEar, personRightShoulder, '#FF9100');     // เส้นขวาจริง (ส้มอ่อน)
-        drawLine(personLeftShoulder, personRightShoulder, '#00E676'); // ฐานไหล่ (เขียว)
+        // แปลงพิกัด Mirror ให้ตรงฝั่งสายตาผู้ใช้เป๊ะๆ
+        const userLeftEar = { x: 1 - rawLeftEar.x, y: rawLeftEar.y };
+        const userRightEar = { x: 1 - rawRightEar.x, y: rawRightEar.y };
+        const userLeftShoulder = { x: 1 - rawLeftShoulder.x, y: rawLeftShoulder.y };
+        const userRightShoulder = { x: 1 - rawRightShoulder.x, y: rawRightShoulder.y };
 
-        // 2. วาดจุดข้อต่อ
-        drawPoint(personLeftEar, '#FF3D00');       
-        drawPoint(personRightEar, '#FF9100');      
-        drawPoint(personLeftShoulder, '#00E676');  
-        drawPoint(personRightShoulder, '#29B6F6'); 
+        // 3. วาดเส้นและจุดข้อต่อ
+        drawLine(userLeftEar, userLeftShoulder, '#FF3D00');       // เส้นซ้าย (ส้ม)
+        drawLine(userRightEar, userRightShoulder, '#FF9100');     // เส้นขวา (ส้มอ่อน)
+        drawLine(userLeftShoulder, userRightShoulder, '#00E676'); // ฐานไหล่ (เขียว)
 
-        // คำนวณองศายืดคอ
-        const userLeftAngle = calculateVectorAngle(personLeftShoulder, personLeftEar, personRightShoulder);
-        const userRightAngle = calculateVectorAngle(personRightShoulder, personRightEar, personLeftShoulder);
+        drawPoint(userLeftEar, '#FF3D00');       
+        drawPoint(userRightEar, '#FF9100');      
+        drawPoint(userLeftShoulder, '#00E676');  
+        drawPoint(userRightShoulder, '#29B6F6'); 
+
+        // 4. คำนวณองศาจากพิกัด Mirror ที่ตรงกับภาพบนหน้าจอ
+        // เมื่อเอียงคอซ้าย (เอียงหาไหล่ซ้ายของคุณ) -> userLeftAngle จะแคบลง (< 62°)
+        // เมื่อเอียงคอขวา (เอียงหาไหล่ขวาของคุณ) -> userRightAngle จะแคบลง (< 62°)
+        const userLeftAngle = calculateVectorAngle(userLeftShoulder, userLeftEar, userRightShoulder);
+        const userRightAngle = calculateVectorAngle(userRightShoulder, userRightEar, userLeftShoulder);
 
         leftAngleVal.innerText = userLeftAngle;
         rightAngleVal.innerText = userRightAngle;
@@ -137,7 +140,7 @@
         const currentTime = Date.now();
 
         if (currentStep === 0) {
-          // STEP 0: สั่งเอียงคอไปทาง "ซ้ายมือของคุณ" ➔ เช็ก userLeftAngle < 62 (เอียงซ้ายจริง = 48° ผ่านทันที!)
+          // STEP 0: สั่งเอียงคอไปทาง "ซ้ายมือของคุณ" (เพื่อยืดกล้ามเนื้อคอฝั่งขวา)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (userLeftAngle < STRETCH_THRESHOLD) {
@@ -162,7 +165,7 @@
           }
         } 
         else if (currentStep === 1) {
-          // STEP 1: สั่งเอียงคอไปทาง "ขวามือของคุณ" ➔ เช็ก userRightAngle < 62 (เอียงขวาจริง = 54° ผ่านทันที!)
+          // STEP 1: สั่งเอียงคอไปทาง "ขวามือของคุณ" (เพื่อยืดกล้ามเนื้อคอฝั่งซ้าย)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (userRightAngle < STRETCH_THRESHOLD) {
