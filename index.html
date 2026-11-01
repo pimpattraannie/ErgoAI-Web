@@ -79,7 +79,7 @@
     const TOTAL_ROUNDS = 2;       // ทำซ้ำ 2 รอบ
     let holdStartTime = null; 
     const HOLD_DURATION = 15;     // ค้าง 15 วินาที
-    const STRETCH_THRESHOLD = 62; // เอียงคอจริง = มุมแคบลงต่ำกว่า 62 องศา
+    const STRETCH_THRESHOLD = 62; // องศาตรวจจับยืดคอ (มุมฝั่งที่เอียงต้องลดลงต่ำกว่า 62°)
 
     function calculateVectorAngle(vertex, ear, oppositeShoulder) {
       if (!vertex || !ear || !oppositeShoulder) return 90;
@@ -106,7 +106,11 @@
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.poseLandmarks) {
-        // จับคู่ Landmark ตามสรีระจริงบนกระจกตรงๆ
+        // จับคู่จุดตามภาพถ่ายกระจกเงาจริง:
+        // Index 7 = หูขวาของกล้อง  ➔ หูซ้ายจริงของคุณ (ส้ม)
+        // Index 8 = หูซ้ายของกล้อง  ➔ หูขวาจริงของคุณ (ส้มอ่อน)
+        // Index 11 = ไหล่ขวาของกล้อง ➔ ไหล่ซ้ายจริงของคุณ (เขียวอ่อน)
+        // Index 12 = ไหล่ซ้ายของกล้อง ➔ ไหล่ขวาจริงของคุณ (ฟ้า)
         const personLeftEar = results.poseLandmarks[7];        
         const personRightEar = results.poseLandmarks[8];       
         const personLeftShoulder = results.poseLandmarks[11];  
@@ -132,12 +136,11 @@
 
         const currentTime = Date.now();
 
-        // 🎯 สลับเงื่อนไขดักฝั่งที่ถูกต้องตามพฤติกรรมรูปถ่ายจริง:
         if (currentStep === 0) {
-          // STEP 0: สั่งเอียงคอไปทาง "ซ้ายมือของคุณ" ➔ ต้องเช็ก userRightAngle < 62 (เพราะเอียงซ้ายจริง ค่าฝั่งนี้จะแคบลงมา 48°)
+          // STEP 0: สั่งเอียงคอไปทาง "ซ้ายมือของคุณ" ➔ เช็ก userLeftAngle < 62 (เอียงซ้ายจริง = 48° ผ่านทันที!)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          if (userRightAngle < STRETCH_THRESHOLD) {
+          if (userLeftAngle < STRETCH_THRESHOLD) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsedSeconds;
@@ -159,10 +162,10 @@
           }
         } 
         else if (currentStep === 1) {
-          // STEP 1: สั่งเอียงคอไปทาง "ขวามือของคุณ" ➔ ต้องเช็ก userLeftAngle < 62 (เพราะเอียงขวาจริง ค่าฝั่งนี้จะแคบลงมา 54°)
+          // STEP 1: สั่งเอียงคอไปทาง "ขวามือของคุณ" ➔ เช็ก userRightAngle < 62 (เอียงขวาจริง = 54° ผ่านทันที!)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          if (userLeftAngle < STRETCH_THRESHOLD) {
+          if (userRightAngle < STRETCH_THRESHOLD) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsedSeconds = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsedSeconds;
