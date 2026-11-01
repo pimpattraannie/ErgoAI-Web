@@ -80,8 +80,8 @@
     let holdStartTime = null; 
     const HOLD_DURATION = 15;     // ค้าง 15 วินาที
     
-    // 🎯 ปรับเกณฑ์ความตึง: ต้องเอียงจนมุมฝั่งที่เอียงกางออกเกิน 78 องศาขึ้นไปถึงจะนับถอยหลัง
-    const STRETCH_ANGLE_MIN = 78; 
+    // 🎯 ปรับเกณฑ์ความตึง: ต้องเอียงจนมุมฝั่งที่เอียงกางออกเกิน 70 องศาขึ้นไปถึงจะนับถอยหลัง
+    const STRETCH_ANGLE_MIN = 70; 
 
     function calculateVectorAngle(vertex, ear, oppositeShoulder) {
       if (!vertex || !ear || !oppositeShoulder) return 90;
