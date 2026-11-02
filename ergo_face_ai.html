@@ -124,6 +124,15 @@
       color: #29B6F6;
       margin-bottom: 8px;
     }
+
+    .session-summary-box {
+      background: #2A2A2A;
+      border: 2px solid #00E676;
+      border-radius: 10px;
+      padding: 15px;
+      margin-top: 15px;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -147,6 +156,13 @@
       <div style="position: relative; display: inline-block;">
         <video id="webcam" style="display:none;" autoplay playsinline></video>
         <canvas id="output_canvas" width="640" height="480"></canvas>
+      </div>
+
+      <!-- สรุปคะแนนหลังทำกายบริหารเสร็จ -->
+      <div id="summary-box" class="session-summary-box">
+        <h3 style="color: #00E676; margin-top: 0;">🎉 สรุปผลคะแนนรอบนี้ (Session Summary)</h3>
+        <p style="font-size: 18px; margin: 5px 0;">คะแนนที่ได้ในรอบนี้: <b id="session-pts" style="color: #FFD54F; font-size: 26px;">+0</b> XP</p>
+        <p style="font-size: 14px; color: #bbb; margin-bottom: 5px;" id="summary-detail"></p>
       </div>
     </div>
 
@@ -212,6 +228,9 @@
     const userDisplayName = document.getElementById('user-display-name');
     const userRegType = document.getElementById('user-reg-type');
     const btnTrigger = document.getElementById('btn-trigger');
+    const summaryBox = document.getElementById('summary-box');
+    const sessionPts = document.getElementById('session-pts');
+    const summaryDetail = document.getElementById('summary-detail');
 
     // System States
     let isFaceModelsLoaded = false;
@@ -229,6 +248,7 @@
     let simulatedFSRRelaxed = false;
     let knownFaces = [];
     let activeUser = null;
+    let currentSessionScore = 0;  // ตัวแปรเก็บคะแนนเฉพาะรอบนี้
 
     // --- 1. Load Local Databases & Face-API Models ---
     window.addEventListener('load', async () => {
@@ -255,7 +275,9 @@
     // --- 2. Step 1: Auto Face Identification & Auto-Registration ---
     async function startAutoIdentificationFlow() {
       triggerModal.style.display = "none";
-      isPoseSessionActive = false; // ปิด Pose ชั่วคราวขณะสแกนหน้า
+      summaryBox.style.display = "none"; // ซ่อนกล่องสรุปคะแนนเก่า
+      currentSessionScore = 0; // รีเซ็ตคะแนนรอบใหม่
+      isPoseSessionActive = false;
       
       stepBadge.innerText = "STEP 1: Face ID Scanning";
       stepBadge.style.background = "#FF9100";
@@ -272,7 +294,7 @@
 
           if (detection) {
             const currentDescriptor = detection.descriptor;
-            const threshold = 0.60; // ปรับเพิ่มเกณฑ์เล็กน้อยเพื่อให้จดจำหน้าเดิมได้ดีขึ้น
+            const threshold = 0.60;
             let matchedUser = null;
 
             for (let user of knownFaces) {
@@ -308,10 +330,9 @@
         }
       }
 
-      // Fallback
       if (!activeUser) {
         if (knownFaces.length > 0) {
-          activeUser = knownFaces[0]; // ดึงคนแรกในระบบถ้าตรวจหน้าไม่เจอ
+          activeUser = knownFaces[0];
           userRegType.innerText = "ผู้ใช้เดิม (Fallback)";
         } else {
           const guestId = "User_001";
@@ -333,7 +354,6 @@
       stepBadge.innerText = "STEP 2: MediaPipe Motion Engine";
       stepBadge.style.background = "#00E676";
       
-      // รีเซ็ตค่าการนับเวลาใหม่ทั้งหมดให้สะอาด
       currentStep = 0;
       currentRound = 1;
       holdStartTime = null;
@@ -415,6 +435,8 @@
             } else {
               let setScore = 50;
               if (simulatedFSRRelaxed) setScore += 20;
+              
+              currentSessionScore += setScore; // สะสมคะแนนเฉพาะรอบนี้
               addScoreToActiveUser(setScore);
 
               currentStep = 1;
@@ -449,6 +471,8 @@
             } else {
               let setScore = 50;
               if (simulatedFSRRelaxed) setScore += 20;
+              
+              currentSessionScore += setScore;
               addScoreToActiveUser(setScore);
 
               holdStartTime = null;
@@ -469,7 +493,7 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
-        // Step 2: สำเร็จ
+        // Step 2: สำเร็จ ➔ แสดงการ์ดสรุปผลคะแนน
         else if (currentStep === 2) {
           roundVal.innerText = "ภารกิจเสร็จสิ้น";
           poseStatus.innerText = `🎉 ยอดเยี่ยม! บันทึกคะแนนให้ ${activeUser.name} เรียบร้อยแล้ว`;
@@ -477,6 +501,11 @@
           timerVal.innerText = "✅ สำเร็จ";
           isPoseSessionActive = false;
           
+          // แสดง Session Summary Box
+          sessionPts.innerText = `+${currentSessionScore}`;
+          summaryDetail.innerText = `ยืดคอครบ 2 รอบ (กล้อง MediaPipe 200 XP ${simulatedFSRRelaxed ? '+ โบนัสเซนเซอร์ FSR คลายแรงกด 80 XP' : ''})`;
+          summaryBox.style.display = "block";
+
           document.getElementById('node1-status').className = "sensor-badge badge-ok";
           document.getElementById('node1-status').innerText = "Normal";
         }
@@ -526,6 +555,7 @@
         userDisplayName.innerText = "ยังไม่ระบุตัวตน";
         userRegType.innerText = "-";
         totalScoreVal.innerText = "0";
+        summaryBox.style.display = "none";
         alert("ล้างฐานข้อมูลเรียบร้อยแล้ว!");
       }
     }
