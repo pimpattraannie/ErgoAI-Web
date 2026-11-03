@@ -161,7 +161,7 @@
         <div id="ex-name" style="color: #00E676; font-weight: bold; font-size: 20px; margin-top: 4px;">ท่าที่ 1: ยืดกล้ามเนื้อคอ</div>
         <div id="round-val" style="color: #29B6F6;">รอบที่ 1 / 2</div>
         <div>สถานะ: <span id="pose-status" class="status">กำลังเริ่มต้นระบบและเปิดกล้อง...</span></div>
-        <div class="timer" id="timer-val"> 15</div>
+        <div class="timer" id="timer-val">⏱️ 15</div>
         <div style="font-size: 14px; color: #aaa; margin-top: 5px;">
           มุมเอียงซ้ายจริง: <span id="left-angle">0</span>° | มุมเอียงขวาจริง: <span id="right-angle">0</span>°
         </div>
@@ -251,7 +251,7 @@
     const TOTAL_ROUNDS = 2;
     let holdStartTime = null;
     const HOLD_DURATION = 15;
-    const STRETCH_ANGLE_MIN = 12; // 🎯 ปรับ threshold องศาให้เหมาะสมกับการเอียงคอ
+    const STRETCH_ANGLE_MIN = 15; // เกณฑ์ความเอียงคอที่เหมาะสมสำหรับนับ Countdown
 
     // IoT & User Database State
     let simulatedFSRRelaxed = false;
@@ -462,17 +462,26 @@
       poseStatus.style.color = "#FFD54F";
     }
 
-    // 🎯 สูตรคำนวณเวกเตอร์องศาเอียงคอที่แม่นยำ (Vector Tilt Math)
-    function calculateNeckTiltAngle(ear, shoulder) {
+    // 🎯 สูตรคำนวณองศาเอียงคอที่ถูกต้อง 100% (Vector Tilt Math ชดเชย Pixel Aspect Ratio)
+    function calculateNeckTiltAngle(ear, shoulder, isLeft) {
       if (!ear || !shoulder) return 0;
-      // คำนวณความแตกต่างระยะในพิกัดพิกเซล
-      const dx = (ear.x - shoulder.x) * canvasElement.width;
-      const dy = (ear.y - shoulder.y) * canvasElement.height;
       
-      // คำนวณองศาเทียบกับแนวตั้ง
-      const angleRad = Math.atan2(Math.abs(dx), Math.abs(dy));
-      const angleDeg = Math.round(angleRad * (180 / Math.PI));
-      return Math.min(60, Math.max(0, angleDeg));
+      // แปลงพิกัด Normalized เป็นพิกเซลจริง (640x480)
+      const dx = (ear.x - shoulder.x) * canvasElement.width;
+      const dy = (ear.y - shoulder.y) * canvasElement.height; 
+
+      // คำนวณมุมความเอียงจากแนวตั้งฉาก (Vertical Normal)
+      const angleRad = Math.atan2(dx, -dy);
+      let angleDeg = angleRad * (180 / Math.PI);
+
+      // แยกฝั่งเพื่อให็ได้ค่าองศาที่เป็นบวกเมื่อเอียงคอออกข้าง
+      if (isLeft) {
+        angleDeg = -angleDeg;
+      } else {
+        angleDeg = angleDeg;
+      }
+
+      return Math.min(90, Math.max(0, Math.round(angleDeg)));
     }
 
     function processPoseGamification(landmarks) {
@@ -497,17 +506,16 @@
         drawPoint(rawLeftShoulder, '#00E676');  
         drawPoint(rawRightShoulder, '#29B6F6'); 
 
-        // 🎯 คำนวณมุมเอียงจริงจากจุด Landmarks
-        // ในมุมมองกระจก: หูซ้ายจริงบนภาพวิดีโอคือ MediaPipe Left Ear (7)
-        const leftNeckAngle = calculateNeckTiltAngle(rawLeftEar, rawLeftShoulder);
-        const rightNeckAngle = calculateNeckTiltAngle(rawRightEar, rawRightShoulder);
+        // 🎯 คำนวณมุมเอียงจริงจากจุด Landmarks แยกฝั่งซ้าย-ขวา
+        const leftNeckAngle = calculateNeckTiltAngle(rawLeftEar, rawLeftShoulder, true);
+        const rightNeckAngle = calculateNeckTiltAngle(rawRightEar, rawRightShoulder, false);
 
         leftAngleVal.innerText = leftNeckAngle;
         rightAngleVal.innerText = rightNeckAngle;
 
         if (!isPoseSessionActive) return;
 
-        if (currentStep === 0) { // เอียงคอไปทางซ้ายมือผู้เล่น (คอเอียงไปซ้าย)
+        if (currentStep === 0) { // เอียงคอไปทางซ้ายมือผู้เล่น
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (leftNeckAngle >= STRETCH_ANGLE_MIN) {
@@ -768,7 +776,7 @@
       }
     }
 
-    // 🎯 ฟังก์ชันวาดเส้นและจุดพิกัดใน Mirror Mode 100%
+    // 🎯 วาดจุดและเส้นพิกัดใน Mirror Mode 100%
     function drawLine(from, to, color = '#FFFFFF') {
       if (!from || !to) return;
       const x1 = (1 - from.x) * canvasElement.width;
