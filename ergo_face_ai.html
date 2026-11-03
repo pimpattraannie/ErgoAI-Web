@@ -138,10 +138,10 @@
 <body>
 
   <h1>ErgoFaceAI Hub</h1>
-  <p>Node 4: Interactive Gamification Engine with Auto Face-ID & Multi-Node Sensor Sync</p>
+  <p>Node 4: Interactive Gamification Engine with Visual Face-ID & Multi-Node Sensor Sync</p>
 
   <div class="main-grid">
-    <!-- ฝั่งซ้าย: กล้อง MediaPipe Pose & Game Engine -->
+    <!-- ฝั่งซ้าย: กล้อง & Visual Interface -->
     <div class="game-section">
       <div class="score-board">
         <div class="step-indicator" id="step-badge">STEP 1: Face ID Scanning</div>
@@ -235,6 +235,7 @@
     // System States
     let isFaceModelsLoaded = false;
     let isPoseSessionActive = false;
+    let isScanningFaceVisual = false;
     
     // MediaPipe Game Engine State
     let currentStep = 0;          // 0 = เอียงซ้ายยืดขวา, 1 = เอียงขวายืดซ้าย, 2 = สำเร็จ
@@ -248,7 +249,7 @@
     let simulatedFSRRelaxed = false;
     let knownFaces = [];
     let activeUser = null;
-    let currentSessionScore = 0;  // ตัวแปรเก็บคะแนนเฉพาะรอบนี้
+    let currentSessionScore = 0;
 
     // --- 1. Load Local Databases & Face-API Models ---
     window.addEventListener('load', async () => {
@@ -272,12 +273,13 @@
       }
     });
 
-    // --- 2. Step 1: Auto Face Identification & Auto-Registration ---
+    // --- 2. Step 1: Auto Face Identification & Visual Bounding Box ---
     async function startAutoIdentificationFlow() {
       triggerModal.style.display = "none";
-      summaryBox.style.display = "none"; // ซ่อนกล่องสรุปคะแนนเก่า
-      currentSessionScore = 0; // รีเซ็ตคะแนนรอบใหม่
+      summaryBox.style.display = "none";
+      currentSessionScore = 0;
       isPoseSessionActive = false;
+      isScanningFaceVisual = true;
       
       stepBadge.innerText = "STEP 1: Face ID Scanning";
       stepBadge.style.background = "#FF9100";
@@ -285,6 +287,8 @@
       poseStatus.style.color = "#FFD54F";
 
       activeUser = null;
+      let boxColor = "#29B6F6";
+      let boxLabel = "กำลังตรวจจับ...";
 
       if (isFaceModelsLoaded) {
         try {
@@ -306,7 +310,10 @@
               }
             }
 
+            const box = detection.detection.box;
+
             if (!matchedUser) {
+              // กรณีผู้ใช้ใหม่ ➔ สแกนเจอสร้างใหม่ ➔ กรอบสีส้ม
               const newId = "User_" + String(knownFaces.length + 1).padStart(3, '0');
               matchedUser = {
                 id: newId,
@@ -316,20 +323,30 @@
               };
               knownFaces.push(matchedUser);
               saveKnownFacesToStorage();
+              
               userRegType.innerText = "Auto-Registered ใหม่";
-              userRegType.style.color = "#00E676";
+              userRegType.style.color = "#FF9100";
+              boxColor = "#FF9100"; 
+              boxLabel = `✨ ลงทะเบียนใหม่: ${matchedUser.name}`;
             } else {
+              // กรณีผู้ใช้เดิมในระบบ ➔ กรอบสีเขียว
               userRegType.innerText = "ผู้ใช้เดิมในระบบ";
-              userRegType.style.color = "#29B6F6";
+              userRegType.style.color = "#00E676";
+              boxColor = "#00E676";
+              boxLabel = `✅ ตรวจพบ: ${matchedUser.name}`;
             }
 
             activeUser = matchedUser;
+
+            // 🎯 วาดกรอบ Visual Bounding Box บน Canvas สดๆ
+            drawFaceBoundingBox(box, boxColor, boxLabel);
           }
         } catch (e) {
           console.error("Face Detection Failed:", e);
         }
       }
 
+      // Fallback
       if (!activeUser) {
         if (knownFaces.length > 0) {
           activeUser = knownFaces[0];
@@ -345,8 +362,44 @@
 
       userDisplayName.innerText = activeUser.name;
       totalScoreVal.innerText = activeUser.score;
+      poseStatus.innerText = `ระบุตัวตนสำเร็จ: ${activeUser.name}`;
 
-      startPoseGamificationSession();
+      // ค้างแสดงผลกรอบใบหน้าไว้ 2 วินาทีเพื่อให้ผู้ใช้เห็นชัดเจน ก่อนสลับไปเล่นเกม
+      setTimeout(() => {
+        isScanningFaceVisual = false;
+        startPoseGamificationSession();
+      }, 2000);
+    }
+
+    // ฟังก์ชันวาดกรอบใบหน้าและ Label ข้อความ
+    function drawFaceBoundingBox(box, color, labelText) {
+      canvasCtx.save();
+      // ย้ายพิกัดให้ตรงตามกระจกเงา Mirror (scale -1, 1)
+      canvasCtx.translate(canvasElement.width, 0);
+      canvasCtx.scale(-1, 1);
+
+      // คำนวณพิกัดจากกล้อง (640x480)
+      const x = canvasElement.width - box.x - box.width; // Mirror X
+      const y = box.y;
+      const width = box.width;
+      const height = box.height;
+
+      // 1. วาดกรอบสี่เหลี่ยมรอบใบหน้า
+      canvasCtx.strokeStyle = color;
+      canvasCtx.lineWidth = 4;
+      canvasCtx.strokeRect(x, y, width, height);
+
+      // 2. วาดแถบพื้นหลังข้อความ Label
+      canvasCtx.fillStyle = color;
+      canvasCtx.font = "bold 16px 'Segoe UI', Tahoma, sans-serif";
+      const textWidth = canvasCtx.measureText(labelText).width;
+      canvasCtx.fillRect(x, y - 30 > 0 ? y - 30 : y, textWidth + 16, 28);
+
+      // 3. พิมพ์ข้อความชื่อผู้ใช้
+      canvasCtx.fillStyle = "#121212";
+      canvasCtx.fillText(labelText, x + 8, y - 30 > 0 ? y - 10 : y + 20);
+
+      canvasCtx.restore();
     }
 
     // --- 3. Step 2: MediaPipe Pose Gamification Engine ---
@@ -381,6 +434,9 @@
     }
 
     function onResults(results) {
+      // หากกำลังอยู่ในโหมดค้างแสดงกรอบสแกนหน้า ให้อยู่เฉยๆ
+      if (isScanningFaceVisual) return;
+
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
@@ -436,7 +492,7 @@
               let setScore = 50;
               if (simulatedFSRRelaxed) setScore += 20;
               
-              currentSessionScore += setScore; // สะสมคะแนนเฉพาะรอบนี้
+              currentSessionScore += setScore;
               addScoreToActiveUser(setScore);
 
               currentStep = 1;
@@ -493,7 +549,7 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
-        // Step 2: สำเร็จ ➔ แสดงการ์ดสรุปผลคะแนน
+        // Step 2: สำเร็จ
         else if (currentStep === 2) {
           roundVal.innerText = "ภารกิจเสร็จสิ้น";
           poseStatus.innerText = `🎉 ยอดเยี่ยม! บันทึกคะแนนให้ ${activeUser.name} เรียบร้อยแล้ว`;
@@ -501,7 +557,6 @@
           timerVal.innerText = "✅ สำเร็จ";
           isPoseSessionActive = false;
           
-          // แสดง Session Summary Box
           sessionPts.innerText = `+${currentSessionScore}`;
           summaryDetail.innerText = `ยืดคอครบ 2 รอบ (กล้อง MediaPipe 200 XP ${simulatedFSRRelaxed ? '+ โบนัสเซนเซอร์ FSR คลายแรงกด 80 XP' : ''})`;
           summaryBox.style.display = "block";
