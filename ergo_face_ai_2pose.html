@@ -251,9 +251,9 @@
     const TOTAL_ROUNDS = 2;
     let holdStartTime = null;
     const HOLD_DURATION = 15;
-    
-    // 🎯 ปรับเพิ่ม Threshold ความเอียงคอสำหรับการยืดเส้นจริงเป็น 25 องศา (ไม่ตื้นเกินไป)
-    const STRETCH_ANGLE_MIN = 25; 
+
+    // 🎯 เกณฑ์ความเอียงคอสำหรับการยืดกล้ามเนื้อจริง (20 องศา)
+    const STRETCH_ANGLE_THRESHOLD = 20;
 
     // IoT & User Database State
     let simulatedFSRRelaxed = false;
@@ -464,36 +464,35 @@
       poseStatus.style.color = "#FFD54F";
     }
 
-    // 🎯 แก้ไขสูตรคำนวณมุมเอียงคอกระจกเงา (Mirror View Calculation)
-    function calculateNeckTiltAngles(leftEar, rightEar, leftShoulder, rightShoulder) {
-      if (!leftEar || !rightEar || !leftShoulder || !rightShoulder) return { left: 0, right: 0 };
+    // 🎯 แก้ไขสูตรคำนวณองศาใบหน้า: แมปตรงสรีระร่างกายมนุษย์ในโหมดกระจกเงา 100%
+    function calculateEyeLineTiltAngle(leftEye, rightEye) {
+      if (!leftEye || !rightEye) return { left: 0, right: 0 };
 
-      // เวกเตอร์ความชันเส้นหูในระบบ Canvas Pixel
-      const eDx = (leftEar.x - rightEar.x) * canvasElement.width;
-      const eDy = (leftEar.y - rightEar.y) * canvasElement.height;
-      const earAngle = Math.atan2(eDy, eDx) * (180 / Math.PI);
+      // พิกัด Pixel บน Canvas (MediaPipe: LeftEye = 2, RightEye = 5)
+      const lx = leftEye.x * canvasElement.width;
+      const ly = leftEye.y * canvasElement.height;
+      const rx = rightEye.x * canvasElement.width;
+      const ry = rightEye.y * canvasElement.height;
 
-      // เวกเตอร์ความชันเส้นไหล่ในระบบ Canvas Pixel
-      const sDx = (leftShoulder.x - rightShoulder.x) * canvasElement.width;
-      const sDy = (leftShoulder.y - rightShoulder.y) * canvasElement.height;
-      const shoulderAngle = Math.atan2(sDy, sDx) * (180 / Math.PI);
+      const dx = Math.abs(lx - rx);
+      const dy = Math.abs(ly - ry);
 
-      // มุมความเบนศีรษะออกจากไหล่ (นั่งตรงขนานกัน = 0 องศาเป๊ะ)
-      let tiltAngle = Math.round(earAngle - shoulderAngle);
+      // คำนวณขนาดองศาที่เอียงเบนออกจากแนวนอน
+      const angleDeg = Math.round(Math.atan2(dy, dx) * (180 / Math.PI));
 
-      let leftAngle = 0;
-      let rightAngle = 0;
+      let userLeftDeg = 0;
+      let userRightDeg = 0;
 
-      // 🎯 แก้ไขแมปทิศทางบวกลบให้ตรงกับ Mirror View:
-      // เมื่อคุณเอียงคอไปทาง "ซ้ายมือของคุณจริง" ศีรษะบนหน้าจอกระจกจะเอียงทวนเข็มนาฬิกา ➔ tiltAngle จะมีค่าติดลบ (< 0)
-      // เมื่อคุณเอียงคอไปทาง "ขวามือของคุณจริง" ศีรษะบนหน้าจอกระจกจะเอียงตามเข็มนาฬิกา ➔ tiltAngle จะมีค่าเป็นบวก (> 0)
-      if (tiltAngle < 0) {
-        leftAngle = Math.min(60, Math.abs(tiltAngle));
-      } else if (tiltAngle > 0) {
-        rightAngle = Math.min(60, tiltAngle);
+      // 🎯 เงื่อนไขตรงสรีระจริง:
+      // เมื่อผู้ใช้เอียงคอไปทาง "ซ้ายมือของผู้ใช้" ➔ ตาซ้ายสรีระ (MediaPipe Left Eye) จะกดต่ำลง ➔ ly > ry
+      // เมื่อผู้ใช้เอียงคอไปทาง "ขวามือของผู้ใช้" ➔ ตาขวาสรีระ (MediaPipe Right Eye) จะกดต่ำลง ➔ ry > ly
+      if (ly > ry) {
+        userLeftDeg = Math.min(60, angleDeg);
+      } else if (ry > ly) {
+        userRightDeg = Math.min(60, angleDeg);
       }
 
-      return { left: leftAngle, right: rightAngle };
+      return { left: userLeftDeg, right: userRightDeg };
     }
 
     function processPoseGamification(landmarks) {
@@ -502,33 +501,33 @@
       if (currentExercise === 1) {
         exNameVal.innerText = "ท่าที่ 1: ยืดกล้ามเนื้อคอ (Neck Stretch)";
         
-        const rawLeftEar = landmarks[7];        // MediaPipe Left Ear
-        const rawRightEar = landmarks[8];       // MediaPipe Right Ear
+        // Keypoints: 2 = Left Eye (ตาซ้ายสรีระ), 5 = Right Eye (ตาขวาสรีระ)
+        const rawLeftEye = landmarks[2];        
+        const rawRightEye = landmarks[5];       
         const rawLeftShoulder = landmarks[11];  
         const rawRightShoulder = landmarks[12]; 
 
         // วาดจุดและเส้นบน Mirror View
-        drawLine(rawLeftEar, rawLeftShoulder, '#FF3D00');       
-        drawLine(rawRightEar, rawRightShoulder, '#FF9100');     
-        drawLine(rawLeftShoulder, rawRightShoulder, '#00E676'); 
+        drawLine(rawLeftEye, rawRightEye, '#00E676');
+        drawLine(rawLeftShoulder, rawRightShoulder, '#29B6F6'); 
 
-        drawPoint(rawLeftEar, '#FF3D00');       
-        drawPoint(rawRightEar, '#FF9100');      
+        drawPoint(rawLeftEye, '#FF3D00');       
+        drawPoint(rawRightEye, '#FF9100');      
         drawPoint(rawLeftShoulder, '#00E676');  
         drawPoint(rawRightShoulder, '#29B6F6'); 
 
-        // คำนวณองศาเอียงคอแยกซ้าย-ขวาของผู้เล่น (นั่งตรง = 0°)
-        const angles = calculateNeckTiltAngles(rawLeftEar, rawRightEar, rawLeftShoulder, rawRightShoulder);
+        // คำนวณองศาเอียงใบหน้าตามสรีระจริง
+        const angles = calculateEyeLineTiltAngle(rawLeftEye, rawRightEye);
         
         leftAngleVal.innerText = angles.left;
         rightAngleVal.innerText = angles.right;
 
         if (!isPoseSessionActive) return;
 
-        if (currentStep === 0) { // Step 0: ผู้เล่นต้องเอียงคอไปทางซ้ายมือของตนเอง (ต้องเอียงได้ >= 25°)
+        if (currentStep === 0) { // Step 0: ผู้ใช้ต้องเอียงคอไปทางซ้ายมือของตนเอง (>= 20°)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          if (angles.left >= STRETCH_ANGLE_MIN) {
+          if (angles.left >= STRETCH_ANGLE_THRESHOLD) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsed;
@@ -552,7 +551,6 @@
               timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
             }
           } else {
-            // ไม่ถึง 25° หรือคอตรง -> สั่ง Reset ไทม์เมอร์ทันที
             holdStartTime = null;
             camScoreVal.innerText = "0% (เอียงไม่ถึงเกณฑ์)";
             camScoreVal.style.color = "#FFD54F";
@@ -561,10 +559,10 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
-        else if (currentStep === 1) { // Step 1: ผู้เล่นต้องเอียงคอไปทางขวามือของตนเอง (ต้องเอียงได้ >= 25°)
+        else if (currentStep === 1) { // Step 1: ผู้ใช้ต้องเอียงคอไปทางขวามือของตนเอง (>= 20°)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          if (angles.right >= STRETCH_ANGLE_MIN) {
+          if (angles.right >= STRETCH_ANGLE_THRESHOLD) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsed;
@@ -586,10 +584,10 @@
               holdStartTime = null;
               if (currentRound < TOTAL_ROUNDS) {
                 currentRound++;
-                currentStep = 0; // สลับไปรอบ 2
+                currentStep = 0; // สลับกลับไปรอบ 2
                 timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
               } else {
-                currentExercise = 2; // ไปท่าที่ 2
+                currentExercise = 2; // เข้าสู่ท่าที่ 2
                 currentStep = 0;
                 currentRound = 1;
                 timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
@@ -598,7 +596,6 @@
               }
             }
           } else {
-            // ไม่ถึง 25° หรือคอตรง -> สั่ง Reset ไทม์เมอร์ทันที
             holdStartTime = null;
             camScoreVal.innerText = "0% (เอียงไม่ถึงเกณฑ์)";
             camScoreVal.style.color = "#FFD54F";
