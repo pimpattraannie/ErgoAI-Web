@@ -251,7 +251,7 @@
     const TOTAL_ROUNDS = 2;
     let holdStartTime = null;
     const HOLD_DURATION = 15;
-    const STRETCH_ANGLE_MIN = 15; // เกณฑ์ความเอียงคอที่เหมาะสมสำหรับนับ Countdown
+    const STRETCH_ANGLE_MIN = 20; // 🎯 ปรับเกณฑ์เอียงคอจริงขึ้นมาเป็น 20° (นั่งตรงจะได้ ~0°-8°)
 
     // IoT & User Database State
     let simulatedFSRRelaxed = false;
@@ -462,26 +462,30 @@
       poseStatus.style.color = "#FFD54F";
     }
 
-    // 🎯 สูตรคำนวณองศาเอียงคอที่ถูกต้อง 100% (Vector Tilt Math ชดเชย Pixel Aspect Ratio)
-    function calculateNeckTiltAngle(ear, shoulder, isLeft) {
-      if (!ear || !shoulder) return 0;
+    // 🎯 คำนวณองศาเอียงคอที่แม่นยำ (คำนวณจากความเอียงศีรษะเทียบกับแนวนอนไหล่)
+    function calculateNeckTiltAngle(ear, leftShoulder, rightShoulder, isLeftStep) {
+      if (!ear || !leftShoulder || !rightShoulder) return 0;
       
-      // แปลงพิกัด Normalized เป็นพิกเซลจริง (640x480)
-      const dx = (ear.x - shoulder.x) * canvasElement.width;
-      const dy = (ear.y - shoulder.y) * canvasElement.height; 
+      // หาจุดกึ่งกลางไหล่
+      const midShoulderX = (leftShoulder.x + rightShoulder.x) / 2;
+      const midShoulderY = (leftShoulder.y + rightShoulder.y) / 2;
 
-      // คำนวณมุมความเอียงจากแนวตั้งฉาก (Vertical Normal)
-      const angleRad = Math.atan2(dx, -dy);
-      let angleDeg = angleRad * (180 / Math.PI);
+      // เวกเตอร์จากกึ่งกลางไหล่ไปหาหู
+      const dx = (ear.x - midShoulderX) * canvasElement.width;
+      const dy = (midShoulderY - ear.y) * canvasElement.height; // dy เป็นบวกขึ้นด้านบน
 
-      // แยกฝั่งเพื่อให็ได้ค่าองศาที่เป็นบวกเมื่อเอียงคอออกข้าง
-      if (isLeft) {
-        angleDeg = -angleDeg;
-      } else {
-        angleDeg = angleDeg;
-      }
+      // มุมเบนจากแนวตั้งตรง (0° = คอตรง)
+      const angleRad = Math.atan2(Math.abs(dx), dy);
+      let angleDeg = Math.round(angleRad * (180 / Math.PI));
 
-      return Math.min(90, Math.max(0, Math.round(angleDeg)));
+      // ตรวจสอบว่าเอียงถูกทิศทางตาม Step หรือไม่ (ในมุมมองกระจก)
+      const isTiltingLeft = dx < 0; 
+      const isTiltingRight = dx > 0;
+
+      if (isLeftStep && !isTiltingLeft) return 0;
+      if (!isLeftStep && !isTiltingRight) return 0;
+
+      return Math.min(80, Math.max(0, angleDeg));
     }
 
     function processPoseGamification(landmarks) {
@@ -490,9 +494,9 @@
       if (currentExercise === 1) {
         exNameVal.innerText = "ท่าที่ 1: ยืดกล้ามเนื้อคอ (Neck Stretch)";
         
-        // Keypoints จาก MediaPipe Pose
-        const rawLeftEar = landmarks[7];        
-        const rawRightEar = landmarks[8];       
+        // Landmarks
+        const rawLeftEar = landmarks[7];        // หูซ้าย MediaPipe (กระจก = ขวาผู้เล่น)
+        const rawRightEar = landmarks[8];       // หูขวา MediaPipe (กระจก = ซ้ายผู้เล่น)
         const rawLeftShoulder = landmarks[11];  
         const rawRightShoulder = landmarks[12]; 
 
@@ -506,16 +510,18 @@
         drawPoint(rawLeftShoulder, '#00E676');  
         drawPoint(rawRightShoulder, '#29B6F6'); 
 
-        // 🎯 คำนวณมุมเอียงจริงจากจุด Landmarks แยกฝั่งซ้าย-ขวา
-        const leftNeckAngle = calculateNeckTiltAngle(rawLeftEar, rawLeftShoulder, true);
-        const rightNeckAngle = calculateNeckTiltAngle(rawRightEar, rawRightShoulder, false);
+        // 🎯 ในมุมมองกระจกเงา:
+        // หูซ้ายผู้ใช้ (ซ้ายมือของคุณ) = rawRightEar (8)
+        // หูขวาผู้ใช้ (ขวามือของคุณ) = rawLeftEar (7)
+        const leftNeckAngle = calculateNeckTiltAngle(rawRightEar, rawLeftShoulder, rawRightShoulder, true);
+        const rightNeckAngle = calculateNeckTiltAngle(rawLeftEar, rawLeftShoulder, rawRightShoulder, false);
 
         leftAngleVal.innerText = leftNeckAngle;
         rightAngleVal.innerText = rightNeckAngle;
 
         if (!isPoseSessionActive) return;
 
-        if (currentStep === 0) { // เอียงคอไปทางซ้ายมือผู้เล่น
+        if (currentStep === 0) { // 1. เอียงคอไปทางซ้ายมือผู้เล่น
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (leftNeckAngle >= STRETCH_ANGLE_MIN) {
@@ -537,7 +543,7 @@
               currentSessionScore += setScore;
               addScoreToActiveUser(setScore);
 
-              currentStep = 1;
+              currentStep = 1; // สลับไปเอียงขวา
               holdStartTime = null;
               timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
             }
@@ -550,7 +556,7 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
-        else if (currentStep === 1) { // เอียงคอไปทางขวามือผู้เล่น
+        else if (currentStep === 1) { // 2. เอียงคอไปทางขวามือผู้เล่น
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (rightNeckAngle >= STRETCH_ANGLE_MIN) {
