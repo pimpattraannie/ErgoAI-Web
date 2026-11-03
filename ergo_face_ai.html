@@ -68,7 +68,7 @@
       height: 100%;
     }
 
-    /* 🎯 HTML Label Badge แบบซ้อนทับ (อ่านออก 100% ไม่ยุ่งกับ Canvas Context) */
+    /* HTML Overlay Label */
     .face-html-label {
       position: absolute;
       display: none;
@@ -152,7 +152,7 @@
         <div class="step-indicator" id="step-badge">STEP 1: Face ID Scanning</div>
         <div id="ex-name" style="color: #00E676; font-weight: bold; font-size: 20px; margin-top: 4px;">ท่าที่ 1: ยืดกล้ามเนื้อคอ</div>
         <div id="round-val" style="color: #29B6F6;">รอบที่ 1 / 2</div>
-        <div>สถานะ: <span id="pose-status" class="status">กำลังเริ่มต้นระบบและโหลดโมเดล...</span></div>
+        <div>สถานะ: <span id="pose-status" class="status">กำลังเริ่มต้นระบบและเปิดกล้อง...</span></div>
         <div class="timer" id="timer-val">⏱️ 15</div>
         <div style="font-size: 14px; color: #aaa; margin-top: 5px;">
           มุมเอียงซ้ายจริง: <span id="left-angle">0</span>° | มุมเอียงขวาจริง: <span id="right-angle">0</span>°
@@ -235,6 +235,7 @@
     let isScanningInProgress = false;
     let lastScanTime = 0;
     let detectedFaceBox = null;
+    let currentPoseLandmarks = null;
 
     // Multi-Exercise Game Engine State
     let currentExercise = 1;       // 1 = Neck Stretch, 2 = Cross-Body Shoulder Stretch
@@ -269,9 +270,68 @@
         console.warn("⚠️ Face-API Model Load Error:", err);
         poseStatus.innerText = "⚠️ ไม่สามารถโหลดโมเดลสแกนหน้าได้ (ใช้โหมดสำรอง)";
       }
+      
+      startWebcam();
     });
 
-    // --- 2. Step 1: Real-time Face Identification ---
+    // --- 2. Start Camera Feed & Main Direct Render Loop ---
+    async function startWebcam() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+        videoElement.srcObject = stream;
+        videoElement.onloadedmetadata = () => {
+          videoElement.play();
+          requestAnimationFrame(renderCanvasLoop);
+        };
+      } catch (e) {
+        console.error("Camera Access Error:", e);
+        poseStatus.innerText = "⚠️ ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตสิทธิ์ใช้งานกล้อง";
+      }
+    }
+
+    // 🎯 Direct Render Loop (เรนเดอร์ภาพกล้องขึ้นสด 100% ไม่พึ่ง Callback)
+    function renderCanvasLoop() {
+      if (videoElement.readyState >= 2) {
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+        // วาดภาพวิดีโอมุมมองกระจกเงามาตรฐาน
+        canvasCtx.translate(canvasElement.width, 0);
+        canvasCtx.scale(-1, 1);
+        canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+
+        const now = Date.now();
+
+        // STEP 1: สแกนใบหน้าทุกๆ 500ms
+        if (currentSystemStep === 1 && now - lastScanTime > 500) {
+          lastScanTime = now;
+          processFaceScanRealtime();
+        }
+
+        // วาดกรอบสี่เหลี่ยมรอบใบหน้าบน Canvas
+        if (detectedFaceBox) {
+          const mirroredX = canvasElement.width - detectedFaceBox.box.x - detectedFaceBox.box.width;
+          canvasCtx.strokeStyle = detectedFaceBox.color;
+          canvasCtx.lineWidth = 4;
+          canvasCtx.strokeRect(mirroredX, detectedFaceBox.box.y, detectedFaceBox.box.width, detectedFaceBox.box.height);
+        }
+
+        // STEP 2: ประมวลผลเกมกายบริหาร MediaPipe Pose
+        if (currentSystemStep === 2 && currentPoseLandmarks) {
+          processPoseGamification(currentPoseLandmarks);
+        }
+
+        canvasCtx.restore();
+
+        // ส่งภาพไปประมวลผล MediaPipe Pose ใน Background
+        if (pose && isPoseSessionActive) {
+          pose.send({ image: videoElement }).catch(()=>{});
+        }
+      }
+      requestAnimationFrame(renderCanvasLoop);
+    }
+
+    // --- 3. Step 1: Real-time Face Identification ---
     async function processFaceScanRealtime() {
       if (isFaceScanFinished || isScanningInProgress) return;
 
@@ -375,10 +435,10 @@
       startPoseGamificationSession();
     }
 
-    // --- 3. Step 2: Multi-Exercise Engine ---
+    // --- 4. Step 2: Multi-Exercise Engine ---
     function startPoseGamificationSession() {
       currentSystemStep = 2;
-      currentExercise = 1; // เริ่มที่ท่าที่ 1: ยืดคอ
+      currentExercise = 1; 
       stepBadge.innerText = "STEP 2: MediaPipe Motion Engine";
       stepBadge.style.background = "#00E676";
       
@@ -393,7 +453,6 @@
       poseStatus.style.color = "#FFD54F";
     }
 
-    // --- 4. Camera & Render Loop ---
     function calculateVectorAngle(vertex, ear, oppositeShoulder) {
       if (!vertex || !ear || !oppositeShoulder) return 90;
       const v1 = { x: ear.x - vertex.x, y: ear.y - vertex.y };
@@ -409,276 +468,246 @@
       return Math.round((Math.acos(cosAngle) * 180.0) / Math.PI);
     }
 
-    function onResults(results) {
-      canvasCtx.save();
-      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    function processPoseGamification(landmarks) {
+      const currentTime = Date.now();
 
-      // วาดภาพวิดีโอมุมมองกระจกเงามาตรฐาน
-      canvasCtx.translate(canvasElement.width, 0);
-      canvasCtx.scale(-1, 1);
-      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+      // EXERCISE 1: ท่าที่ 1 - ยืดกล้ามเนื้อคอ
+      if (currentExercise === 1) {
+        exNameVal.innerText = "ท่าที่ 1: ยืดกล้ามเนื้อคอ (Neck Stretch)";
+        
+        const rawLeftEar = landmarks[7];        
+        const rawRightEar = landmarks[8];       
+        const rawLeftShoulder = landmarks[11];  
+        const rawRightShoulder = landmarks[12]; 
 
-      const now = Date.now();
+        drawLine(rawLeftEar, rawLeftShoulder, '#FF3D00');       
+        drawLine(rawRightEar, rawRightShoulder, '#FF9100');     
+        drawLine(rawLeftShoulder, rawRightShoulder, '#00E676'); 
 
-      // STEP 1: สแกนใบหน้า
-      if (currentSystemStep === 1) {
-        if (now - lastScanTime > 500) {
-          lastScanTime = now;
-          processFaceScanRealtime();
-        }
-      }
+        drawPoint(rawLeftEar, '#FF3D00');       
+        drawPoint(rawRightEar, '#FF9100');      
+        drawPoint(rawLeftShoulder, '#00E676');  
+        drawPoint(rawRightShoulder, '#29B6F6'); 
 
-      // วาดกรอบสี่เหลี่ยมรอบใบหน้าบน Canvas
-      if (detectedFaceBox) {
-        const mirroredX = canvasElement.width - detectedFaceBox.box.x - detectedFaceBox.box.width;
-        canvasCtx.strokeStyle = detectedFaceBox.color;
-        canvasCtx.lineWidth = 4;
-        canvasCtx.strokeRect(mirroredX, detectedFaceBox.box.y, detectedFaceBox.box.width, detectedFaceBox.box.height);
-      }
+        const leftNeckAngle = calculateVectorAngle(rawLeftShoulder, rawLeftEar, rawRightShoulder);
+        const rightNeckAngle = calculateVectorAngle(rawRightShoulder, rawRightEar, rawLeftShoulder);
 
-      // STEP 2: ทำเกมกายบริหาร MediaPipe
-      if (currentSystemStep === 2 && results.poseLandmarks) {
-        const landmarks = results.poseLandmarks;
-        const currentTime = Date.now();
+        leftAngleVal.innerText = leftNeckAngle;
+        rightAngleVal.innerText = rightNeckAngle;
 
-        // -------------------------------------------------------------
-        // EXERCISE 1: ท่าที่ 1 - ยืดกล้ามเนื้อคอ
-        // -------------------------------------------------------------
-        if (currentExercise === 1) {
-          exNameVal.innerText = "ท่าที่ 1: ยืดกล้ามเนื้อคอ (Neck Stretch)";
+        if (!isPoseSessionActive) return;
+
+        if (currentStep === 0) {
+          roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          const rawLeftEar = landmarks[7];        
-          const rawRightEar = landmarks[8];       
-          const rawLeftShoulder = landmarks[11];  
-          const rawRightShoulder = landmarks[12]; 
+          if (leftNeckAngle > STRETCH_ANGLE_MIN) {
+            if (!holdStartTime) holdStartTime = currentTime;
+            const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
+            const remaining = HOLD_DURATION - elapsed;
 
-          drawLine(rawLeftEar, rawLeftShoulder, '#FF3D00');       
-          drawLine(rawRightEar, rawRightShoulder, '#FF9100');     
-          drawLine(rawLeftShoulder, rawRightShoulder, '#00E676'); 
+            camScoreVal.innerText = "100% (Form Perfect)";
+            camScoreVal.style.color = "#00E676";
 
-          drawPoint(rawLeftEar, '#FF3D00');       
-          drawPoint(rawRightEar, '#FF9100');      
-          drawPoint(rawLeftShoulder, '#00E676');  
-          drawPoint(rawRightShoulder, '#29B6F6'); 
+            if (remaining > 0) {
+              poseStatus.innerText = "ดีมาก! ค้างไว้ กำลังยืดกล้ามเนื้อคอฝั่งขวา...";
+              poseStatus.style.color = "#00E676";
+              timerVal.innerText = `⏱️ ${remaining}`;
+            } else {
+              let setScore = 50;
+              if (simulatedFSRRelaxed) setScore += 20;
+              
+              currentSessionScore += setScore;
+              addScoreToActiveUser(setScore);
 
-          const leftNeckAngle = calculateVectorAngle(rawLeftShoulder, rawLeftEar, rawRightShoulder);
-          const rightNeckAngle = calculateVectorAngle(rawRightShoulder, rawRightEar, rawLeftShoulder);
-
-          leftAngleVal.innerText = leftNeckAngle;
-          rightAngleVal.innerText = rightNeckAngle;
-
-          if (!isPoseSessionActive) {
-            canvasCtx.restore();
-            return;
+              currentStep = 1;
+              holdStartTime = null;
+              timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
+            }
+          } else {
+            holdStartTime = null;
+            camScoreVal.innerText = "0% (เอียงไม่ถึงเกณฑ์)";
+            camScoreVal.style.color = "#FFD54F";
+            poseStatus.innerText = `1. เอียงคอไปทาง 'ซ้ายมือของคุณ' (ค้างไว้ ${HOLD_DURATION} วินาที)`;
+            poseStatus.style.color = "#FFD54F";
+            timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
+        } 
+        else if (currentStep === 1) {
+          roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
+          
+          if (rightNeckAngle > STRETCH_ANGLE_MIN) {
+            if (!holdStartTime) holdStartTime = currentTime;
+            const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
+            const remaining = HOLD_DURATION - elapsed;
 
-          if (currentStep === 0) {
-            roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
-            
-            if (leftNeckAngle > STRETCH_ANGLE_MIN) {
-              if (!holdStartTime) holdStartTime = currentTime;
-              const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
-              const remaining = HOLD_DURATION - elapsed;
+            camScoreVal.innerText = "100% (Form Perfect)";
+            camScoreVal.style.color = "#00E676";
 
-              camScoreVal.innerText = "100% (Form Perfect)";
-              camScoreVal.style.color = "#00E676";
+            if (remaining > 0) {
+              poseStatus.innerText = "ดีมาก! ค้างไว้ กำลังยืดกล้ามเนื้อคอฝั่งซ้าย...";
+              poseStatus.style.color = "#00E676";
+              timerVal.innerText = `⏱️ ${remaining}`;
+            } else {
+              let setScore = 50;
+              if (simulatedFSRRelaxed) setScore += 20;
+              
+              currentSessionScore += setScore;
+              addScoreToActiveUser(setScore);
 
-              if (remaining > 0) {
-                poseStatus.innerText = "ดีมาก! ค้างไว้ กำลังยืดกล้ามเนื้อคอฝั่งขวา...";
-                poseStatus.style.color = "#00E676";
-                timerVal.innerText = `⏱️ ${remaining}`;
-              } else {
-                let setScore = 50;
-                if (simulatedFSRRelaxed) setScore += 20;
-                
-                currentSessionScore += setScore;
-                addScoreToActiveUser(setScore);
-
-                currentStep = 1;
-                holdStartTime = null;
+              holdStartTime = null;
+              if (currentRound < TOTAL_ROUNDS) {
+                currentRound++;
+                currentStep = 0;
                 timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
-              }
-            } else {
-              holdStartTime = null;
-              camScoreVal.innerText = "0% (เอียงไม่ถึงเกณฑ์)";
-              camScoreVal.style.color = "#FFD54F";
-              poseStatus.innerText = `1. เอียงคอไปทาง 'ซ้ายมือของคุณ' (ค้างไว้ ${HOLD_DURATION} วินาที)`;
-              poseStatus.style.color = "#FFD54F";
-              timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
-            }
-          } 
-          else if (currentStep === 1) {
-            roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
-            
-            if (rightNeckAngle > STRETCH_ANGLE_MIN) {
-              if (!holdStartTime) holdStartTime = currentTime;
-              const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
-              const remaining = HOLD_DURATION - elapsed;
-
-              camScoreVal.innerText = "100% (Form Perfect)";
-              camScoreVal.style.color = "#00E676";
-
-              if (remaining > 0) {
-                poseStatus.innerText = "ดีมาก! ค้างไว้ กำลังยืดกล้ามเนื้อคอฝั่งซ้าย...";
-                poseStatus.style.color = "#00E676";
-                timerVal.innerText = `⏱️ ${remaining}`;
               } else {
-                let setScore = 50;
-                if (simulatedFSRRelaxed) setScore += 20;
-                
-                currentSessionScore += setScore;
-                addScoreToActiveUser(setScore);
-
-                holdStartTime = null;
-                if (currentRound < TOTAL_ROUNDS) {
-                  currentRound++;
-                  currentStep = 0;
-                  timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
-                } else {
-                  // จบท่าที่ 1 ➔ สลับเข้าท่าที่ 2!
-                  currentExercise = 2;
-                  currentStep = 0;
-                  currentRound = 1;
-                  alert("🎉 ท่าที่ 1 เสร็จสิ้น! เตรียมพร้อมเข้าสู่ ท่าที่ 2: ยืดไหล่ข้ามอก (Cross-Body Stretch)");
-                }
+                currentExercise = 2;
+                currentStep = 0;
+                currentRound = 1;
+                alert("🎉 ท่าที่ 1 เสร็จสิ้น! เตรียมพร้อมเข้าสู่ ท่าที่ 2: ยืดไหล่ข้ามอก (Cross-Body Stretch)");
               }
-            } else {
-              holdStartTime = null;
-              camScoreVal.innerText = "0% (เอียงไม่ถึงเกณฑ์)";
-              camScoreVal.style.color = "#FFD54F";
-              poseStatus.innerText = `2. เอียงคอไปทาง 'ขวามือของคุณ' (ค้างไว้ ${HOLD_DURATION} วินาที)`;
-              poseStatus.style.color = "#FF9100";
-              timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
             }
-          }
-        }
-
-        // -------------------------------------------------------------
-        // EXERCISE 2: ท่าที่ 2 - ยืดไหล่ข้ามอก (Cross-Body Stretch)[cite: 3]
-        // -------------------------------------------------------------
-        else if (currentExercise === 2) {
-          exNameVal.innerText = "ท่าที่ 2: ยืดไหล่ข้ามอก (Cross-Body Stretch)";
-
-          drawPoint(landmarks[11], '#00E676'); // ไหล่ซ้าย
-          drawPoint(landmarks[12], '#29B6F6'); // ไหล่ขวา
-          drawPoint(landmarks[13], '#FFD54F'); // ข้อศอกซ้าย
-          drawPoint(landmarks[14], '#FFD54F'); // ข้อศอกขวา
-          drawPoint(landmarks[15], '#FF3D00'); // ข้อมือซ้าย
-          drawPoint(landmarks[16], '#FF9100'); // ข้อมือขวา
-
-          drawLine(landmarks[11], landmarks[13], '#00E676');
-          drawLine(landmarks[13], landmarks[15], '#FF3D00');
-          drawLine(landmarks[12], landmarks[14], '#29B6F6');
-          drawLine(landmarks[14], landmarks[16], '#FF9100');
-
-          const rightWrist = landmarks[16];
-          const leftShoulder = landmarks[11];
-          const leftWrist = landmarks[15];
-          const rightShoulder = landmarks[12];
-
-          // Step 0: ดึงแขนขวาข้ามอกไปทางซ้าย (Right Arm Crosses to Left)
-          if (currentStep === 0) {
-            roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
-            
-            // ข้อมือขวาต้องดึงข้ามแกนไหล่ซ้ายไปทางซ้าย
-            const isRightArmCrossed = rightWrist.x < leftShoulder.x;
-
-            if (isRightArmCrossed) {
-              if (!holdStartTime) holdStartTime = currentTime;
-              const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
-              const remaining = HOLD_DURATION - elapsed;
-
-              camScoreVal.innerText = "100% (Shoulder Stretch Active)";
-              camScoreVal.style.color = "#00E676";
-
-              if (remaining > 0) {
-                poseStatus.innerText = "ดีมาก! ดึงแขนขวาข้ามอกค้างไว้...";
-                poseStatus.style.color = "#00E676";
-                timerVal.innerText = `⏱️ ${remaining}`;
-              } else {
-                let setScore = 50;
-                if (simulatedFSRRelaxed) setScore += 20;
-                
-                currentSessionScore += setScore;
-                addScoreToActiveUser(setScore);
-
-                currentStep = 1; // สลับไปยืดแขนซ้าย
-                holdStartTime = null;
-                timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
-              }
-            } else {
-              holdStartTime = null;
-              camScoreVal.innerText = "0% (ดึงแขนขวาข้ามอกไม่สุด)";
-              camScoreVal.style.color = "#FFD54F";
-              poseStatus.innerText = "1. ดึงแขนขวาข้ามอกไปทางซ้าย แล้วใช้แขนซ้ายล็อคดันไว้";
-              poseStatus.style.color = "#FFD54F";
-              timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
-            }
-          }
-          // Step 1: ดึงแขนซ้ายข้ามอกไปทางขวา (Left Arm Crosses to Right)[cite: 3]
-          else if (currentStep === 1) {
-            roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
-
-            // ข้อมือซ้ายต้องดึงข้ามแกนไหล่ขวาไปทางขวา
-            const isLeftArmCrossed = leftWrist.x > rightShoulder.x;
-
-            if (isLeftArmCrossed) {
-              if (!holdStartTime) holdStartTime = currentTime;
-              const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
-              const remaining = HOLD_DURATION - elapsed;
-
-              camScoreVal.innerText = "100% (Shoulder Stretch Active)";
-              camScoreVal.style.color = "#00E676";
-
-              if (remaining > 0) {
-                poseStatus.innerText = "ดีมาก! ดึงแขนซ้ายข้ามอกค้างไว้...";
-                poseStatus.style.color = "#00E676";
-                timerVal.innerText = `⏱️ ${remaining}`;
-              } else {
-                let setScore = 50;
-                if (simulatedFSRRelaxed) setScore += 20;
-                
-                currentSessionScore += setScore;
-                addScoreToActiveUser(setScore);
-
-                holdStartTime = null;
-                if (currentRound < TOTAL_ROUNDS) {
-                  currentRound++;
-                  currentStep = 0;
-                  timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
-                } else {
-                  currentStep = 2; // ครบทั้ง 2 ท่าเรียบร้อย!
-                }
-              }
-            } else {
-              holdStartTime = null;
-              camScoreVal.innerText = "0% (ดึงแขนซ้ายข้ามอกไม่สุด)";
-              camScoreVal.style.color = "#FFD54F";
-              poseStatus.innerText = "2. ดึงแขนซ้ายข้ามอกไปทางขวา แล้วใช้แขนขวาล็อคดันไว้";
-              poseStatus.style.color = "#FF9100";
-              timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
-            }
-          }
-          // Step 2: ภารกิจเสร็จสิ้นสมบูรณ์
-          else if (currentStep === 2) {
-            exNameVal.innerText = "🏆 การบริหารเสร็จสิ้นสมบูรณ์!";
-            roundVal.innerText = "ครบทั้ง 2 ท่าบริหาร";
-            poseStatus.innerText = `🎉 ยอดเยี่ยม! บันทึกคะแนนให้ ${activeUser.name} เรียบร้อยแล้ว`;
-            poseStatus.style.color = "#00E676";
-            timerVal.innerText = "✅ สำเร็จ";
-            isPoseSessionActive = false;
-            
-            sessionPts.innerText = `+${currentSessionScore}`;
-            summaryDetail.innerText = `ยืดคอ & ยืดไหล่ข้ามอก ครบชุด (กล้อง MediaPipe 400 XP ${simulatedFSRRelaxed ? '+ โบนัสเซนเซอร์ FSR คลายแรงกด 160 XP' : ''})`;
-            summaryBox.style.display = "block";
-
-            document.getElementById('node1-status').className = "sensor-badge badge-ok";
-            document.getElementById('node1-status').innerText = "Normal";
+          } else {
+            holdStartTime = null;
+            camScoreVal.innerText = "0% (เอียงไม่ถึงเกณฑ์)";
+            camScoreVal.style.color = "#FFD54F";
+            poseStatus.innerText = `2. เอียงคอไปทาง 'ขวามือของคุณ' (ค้างไว้ ${HOLD_DURATION} วินาที)`;
+            poseStatus.style.color = "#FF9100";
+            timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         }
       }
-      canvasCtx.restore();
+
+      // EXERCISE 2: ท่าที่ 2 - ยืดไหล่ข้ามอก
+      else if (currentExercise === 2) {
+        exNameVal.innerText = "ท่าที่ 2: ยืดไหล่ข้ามอก (Cross-Body Stretch)";
+
+        drawPoint(landmarks[11], '#00E676'); 
+        drawPoint(landmarks[12], '#29B6F6'); 
+        drawPoint(landmarks[13], '#FFD54F'); 
+        drawPoint(landmarks[14], '#FFD54F'); 
+        drawPoint(landmarks[15], '#FF3D00'); 
+        drawPoint(landmarks[16], '#FF9100'); 
+
+        drawLine(landmarks[11], landmarks[13], '#00E676');
+        drawLine(landmarks[13], landmarks[15], '#FF3D00');
+        drawLine(landmarks[12], landmarks[14], '#29B6F6');
+        drawLine(landmarks[14], landmarks[16], '#FF9100');
+
+        const rightWrist = landmarks[16];
+        const leftShoulder = landmarks[11];
+        const leftWrist = landmarks[15];
+        const rightShoulder = landmarks[12];
+
+        if (currentStep === 0) {
+          roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
+          const isRightArmCrossed = rightWrist.x < leftShoulder.x;
+
+          if (isRightArmCrossed) {
+            if (!holdStartTime) holdStartTime = currentTime;
+            const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
+            const remaining = HOLD_DURATION - elapsed;
+
+            camScoreVal.innerText = "100% (Shoulder Stretch Active)";
+            camScoreVal.style.color = "#00E676";
+
+            if (remaining > 0) {
+              poseStatus.innerText = "ดีมาก! ดึงแขนขวาข้ามอกค้างไว้...";
+              poseStatus.style.color = "#00E676";
+              timerVal.innerText = `⏱️ ${remaining}`;
+            } else {
+              let setScore = 50;
+              if (simulatedFSRRelaxed) setScore += 20;
+              
+              currentSessionScore += setScore;
+              addScoreToActiveUser(setScore);
+
+              currentStep = 1;
+              holdStartTime = null;
+              timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
+            }
+          } else {
+            holdStartTime = null;
+            camScoreVal.innerText = "0% (ดึงแขนขวาข้ามอกไม่สุด)";
+            camScoreVal.style.color = "#FFD54F";
+            poseStatus.innerText = "1. ดึงแขนขวาข้ามอกไปทางซ้าย แล้วใช้แขนซ้ายล็อคดันไว้";
+            poseStatus.style.color = "#FFD54F";
+            timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
+          }
+        }
+        else if (currentStep === 1) {
+          roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
+          const isLeftArmCrossed = leftWrist.x > rightShoulder.x;
+
+          if (isLeftArmCrossed) {
+            if (!holdStartTime) holdStartTime = currentTime;
+            const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
+            const remaining = HOLD_DURATION - elapsed;
+
+            camScoreVal.innerText = "100% (Shoulder Stretch Active)";
+            camScoreVal.style.color = "#00E676";
+
+            if (remaining > 0) {
+              poseStatus.innerText = "ดีมาก! ดึงแขนซ้ายข้ามอกค้างไว้...";
+              poseStatus.style.color = "#00E676";
+              timerVal.innerText = `⏱️ ${remaining}`;
+            } else {
+              let setScore = 50;
+              if (simulatedFSRRelaxed) setScore += 20;
+              
+              currentSessionScore += setScore;
+              addScoreToActiveUser(setScore);
+
+              holdStartTime = null;
+              if (currentRound < TOTAL_ROUNDS) {
+                currentRound++;
+                currentStep = 0;
+                timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
+              } else {
+                currentStep = 2;
+              }
+            }
+          } else {
+            holdStartTime = null;
+            camScoreVal.innerText = "0% (ดึงแขนซ้ายข้ามอกไม่สุด)";
+            camScoreVal.style.color = "#FFD54F";
+            poseStatus.innerText = "2. ดึงแขนซ้ายข้ามอกไปทางขวา แล้วใช้แขนขวาล็อคดันไว้";
+            poseStatus.style.color = "#FF9100";
+            timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
+          }
+        }
+        else if (currentStep === 2) {
+          exNameVal.innerText = "🏆 การบริหารเสร็จสิ้นสมบูรณ์!";
+          roundVal.innerText = "ครบทั้ง 2 ท่าบริหาร";
+          poseStatus.innerText = `🎉 ยอดเยี่ยม! บันทึกคะแนนให้ ${activeUser.name} เรียบร้อยแล้ว`;
+          poseStatus.style.color = "#00E676";
+          timerVal.innerText = "✅ สำเร็จ";
+          isPoseSessionActive = false;
+          
+          sessionPts.innerText = `+${currentSessionScore}`;
+          summaryDetail.innerText = `ยืดคอ & ยืดไหล่ข้ามอก ครบชุด (กล้อง MediaPipe 400 XP ${simulatedFSRRelaxed ? '+ โบนัสเซนเซอร์ FSR คลายแรงกด 160 XP' : ''})`;
+          summaryBox.style.display = "block";
+
+          document.getElementById('node1-status').className = "sensor-badge badge-ok";
+          document.getElementById('node1-status').innerText = "Normal";
+        }
+      }
     }
+
+    // MediaPipe Pose Callback Setup
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    pose.onResults((results) => {
+      currentPoseLandmarks = results.poseLandmarks || null;
+    });
 
     // --- 5. Helper Functions ---
     function triggerIntervention() {
@@ -688,6 +717,7 @@
       isPoseSessionActive = false;
       isScanningInProgress = false;
       detectedFaceBox = null;
+      currentPoseLandmarks = null;
       faceLabelTag.style.display = "none";
       summaryBox.style.display = "none";
       currentSessionScore = 0;
@@ -756,4 +786,10 @@
     function drawPoint(landmark, color = '#00E676') {
       if (!landmark) return;
       canvasCtx.beginPath();
-      canvasCtx.arc(landmark.x * canvasElement.width, landmark.y * canvasElement.height, 8
+      canvasCtx.arc(landmark.x * canvasElement.width, landmark.y * canvasElement.height, 8, 0, 2 * Math.PI);
+      canvasCtx.fillStyle = color;
+      canvasCtx.fill();
+    }
+  </script>
+</body>
+</html>
