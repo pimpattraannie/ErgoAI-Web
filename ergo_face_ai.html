@@ -93,7 +93,6 @@
     }
 
     button:hover { background: #00B0FF; color: #FFF; }
-    button:disabled { background: #555 !important; color: #888 !important; cursor: not-allowed; }
 
     .step-indicator {
       display: inline-block;
@@ -149,7 +148,6 @@
 
     <!-- ฝั่งขวา: IoT Dashboard & User Profile Management -->
     <div class="sidebar">
-      <!-- แสดงผู้ใช้งานที่ระบุตัวตนได้ -->
       <div class="card">
         <h3>👤 Active User Profile</h3>
         <div>ชื่อผู้ใช้: <b id="user-display-name" style="color: #29B6F6;">กำลังสแกนใบหน้า...</b></div>
@@ -158,7 +156,6 @@
         <button onclick="clearFaceDatabase()" style="background: #D32F2F; color: white; margin-top: 10px;">🗑️ ล้างฐานข้อมูลใบหน้า</button>
       </div>
 
-      <!-- จำลองสถานะ Hardware Node 1-3 -->
       <div class="card">
         <h3>📡 Hardware Nodes Status</h3>
         <p>Node 1 (Seat FSR): <span id="node1-status" class="sensor-badge badge-warn">Stagnant (นั่งนาน)</span></p>
@@ -171,7 +168,6 @@
         <button onclick="toggleFSRRelaxation()" style="background: #FF9100; color: white;">🔄 2. จำลองค่า FSR คลายแรงกด (+Bonus)</button>
       </div>
 
-      <!-- สรุปผล Hybrid Score -->
       <div class="card">
         <h3>📊 Real-time Hybrid Score</h3>
         <div>Camera Accuracy: <b id="cam-score">0%</b></div>
@@ -209,12 +205,12 @@
     let detectedFaceVisual = null; // { box, label, color }
 
     // MediaPipe Game Engine State
-    let currentStep = 0;          // 0 = เอียงซ้ายยืดขวา, 1 = เอียงขวายืดซ้าย, 2 = สำเร็จ
+    let currentStep = 0;          
     let currentRound = 1;
     const TOTAL_ROUNDS = 2;
     let holdStartTime = null;
     const HOLD_DURATION = 15;
-    const STRETCH_ANGLE_MIN = 70; // เกณฑ์องศายืดตึงกำลังดี
+    const STRETCH_ANGLE_MIN = 70; 
 
     // IoT & User Database State
     let simulatedFSRRelaxed = false;
@@ -273,7 +269,6 @@
           const box = detection.detection.box;
 
           if (!matchedUser) {
-            // กรณีผู้ใช้ใหม่ ➔ กรอบสีส้ม
             const newId = "User_" + String(knownFaces.length + 1).padStart(3, '0');
             matchedUser = {
               id: newId,
@@ -289,16 +284,15 @@
             detectedFaceVisual = {
               box: box,
               color: "#FF9100",
-              label: `✨ ลงทะเบียนใหม่: ${matchedUser.name}`
+              label: `ลงทะเบียนใหม่: ${matchedUser.name}`
             };
           } else {
-            // กรณีผู้ใช้เดิมในระบบ ➔ กรอบสีเขียว
             userRegType.innerText = "ผู้ใช้เดิมในระบบ";
             userRegType.style.color = "#00E676";
             detectedFaceVisual = {
               box: box,
               color: "#00E676",
-              label: `✅ ตรวจพบ: ${matchedUser.name}`
+              label: `ตรวจพบ: ${matchedUser.name}`
             };
           }
 
@@ -308,7 +302,6 @@
           poseStatus.innerText = `ยืนยันตัวตนสำเร็จ: ${activeUser.name}`;
           poseStatus.style.color = "#00E676";
 
-          // สแกนสำเร็จ ล็อคผลไว้ และนับถอยหลัง 3 วินาทีเพื่อเข้าสู่ Step 2
           isFaceScanFinished = true;
           setTimeout(() => {
             detectedFaceVisual = null;
@@ -335,29 +328,34 @@
       startPoseGamificationSession();
     }
 
+    // 🎯 แก้ไขการวาด Label ตัวหนังสือให้อ่านออก 100% ไม่พลิกส่องกระจก
     function drawFaceBoundingBox(box, color, labelText) {
+      // 1. วาดกรอบสี่เหลี่ยมบนระบบพิกัด Mirror
       canvasCtx.save();
-      const x = canvasElement.width - box.x - box.width;
-      const y = box.y;
+      const mirroredX = canvasElement.width - box.x - box.width;
+      const y = Math.max(box.y, 45); // บังคับไม่ให้ป้ายหลุดขอบบน
       const width = box.width;
       const height = box.height;
 
-      // 1. วาดกรอบสี่เหลี่ยมรอบใบหน้า
       canvasCtx.strokeStyle = color;
       canvasCtx.lineWidth = 4;
-      canvasCtx.strokeRect(x, y, width, height);
+      canvasCtx.strokeRect(mirroredX, y, width, height);
+      canvasCtx.restore();
 
-      // 2. วาดพื้นหลัง Label
-      canvasCtx.fillStyle = color;
-      canvasCtx.font = "bold 16px 'Segoe UI', Tahoma, sans-serif";
+      // 2. วาดป้ายชื่อแบบตัวหนังสือปกติ (ถอนการสลับพิกัด Mirror ออกเฉพาะตัวหนังสือ)
+      canvasCtx.save();
+      canvasCtx.font = "bold 18px 'Segoe UI', Tahoma, sans-serif";
       const textWidth = canvasCtx.measureText(labelText).width;
-      const labelY = y - 30 > 0 ? y - 30 : y;
-      canvasCtx.fillRect(x, labelY, textWidth + 16, 28);
+      const padding = 10;
+      const labelY = y - 35;
 
-      // 3. พิมพ์ข้อความชื่อผู้ใช้
+      // พื้นหลังป้ายชื่อ
+      canvasCtx.fillStyle = color;
+      canvasCtx.fillRect(mirroredX, labelY, textWidth + (padding * 2), 30);
+
+      // ข้อความชื่อผู้ใช้ (สีดำเข้ม ตัวหนา อ่านง่าย)
       canvasCtx.fillStyle = "#121212";
-      canvasCtx.fillText(labelText, x + 8, labelY + 20);
-
+      canvasCtx.fillText(labelText, mirroredX + padding, labelY + 21);
       canvasCtx.restore();
     }
 
@@ -402,15 +400,17 @@
       canvasCtx.scale(-1, 1);
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-      // 🎯 STEP 1: ถ้าอยู่ในช่วงสแกนใบหน้า
+      // STEP 1: ถ้าอยู่ในช่วงสแกนใบหน้า
       if (currentSystemStep === 1) {
         processFaceScanRealtime();
-        if (detectedFaceVisual) {
-          drawFaceBoundingBox(detectedFaceVisual.box, detectedFaceVisual.color, detectedFaceVisual.label);
-        }
       }
 
-      // 🎯 STEP 2: ถ้าอยู่ในช่วงทำเกมยืดคอ MediaPipe
+      // วาดกรอบและ Label ตัวหนังสือแบบอ่านออกปกติ
+      if (detectedFaceVisual) {
+        drawFaceBoundingBox(detectedFaceVisual.box, detectedFaceVisual.color, detectedFaceVisual.label);
+      }
+
+      // STEP 2: ถ้าอยู่ในช่วงทำเกมยืดคอ MediaPipe
       if (currentSystemStep === 2 && results.poseLandmarks) {
         const rawLeftEar = results.poseLandmarks[7];        
         const rawRightEar = results.poseLandmarks[8];       
@@ -439,7 +439,6 @@
 
         const currentTime = Date.now();
 
-        // Step 0: สั่งเอียงคอไปทาง "ซ้ายมือของคุณ"
         if (currentStep === 0) {
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
@@ -475,7 +474,6 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
-        // Step 1: สั่งเอียงคอไปทาง "ขวามือของคุณ"
         else if (currentStep === 1) {
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
@@ -516,7 +514,6 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
-        // Step 2: สำเร็จ
         else if (currentStep === 2) {
           roundVal.innerText = "ภารกิจเสร็จสิ้น";
           poseStatus.innerText = `🎉 ยอดเยี่ยม! บันทึกคะแนนให้ ${activeUser.name} เรียบร้อยแล้ว`;
@@ -535,9 +532,8 @@
       canvasCtx.restore();
     }
 
-    // --- 5. Helper & Trigger Functions ---
+    // --- 5. Helper Functions ---
     function triggerIntervention() {
-      // สั่งรีสตาร์ทกระบวนการสแกนหน้าใหม่ตั้งแต่แรก
       currentSystemStep = 1;
       isFaceScanFinished = false;
       isPoseSessionActive = false;
