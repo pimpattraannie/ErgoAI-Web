@@ -251,7 +251,9 @@
     const TOTAL_ROUNDS = 2;
     let holdStartTime = null;
     const HOLD_DURATION = 15;
-    const STRETCH_ANGLE_MIN = 15; // 🎯 เกณฑ์เอียงคอจริงที่ต้องทำถึง 15 องศา (ตอนนั่งตรงจะเป็น 0)
+    
+    // 🎯 ปรับเพิ่ม Threshold ความเอียงคอสำหรับการยืดเส้นจริงเป็น 25 องศา (ไม่ตื้นเกินไป)
+    const STRETCH_ANGLE_MIN = 25; 
 
     // IoT & User Database State
     let simulatedFSRRelaxed = false;
@@ -462,9 +464,7 @@
       poseStatus.style.color = "#FFD54F";
     }
 
-    // 🎯 LOGIC คำนวณความเอียงคอที่ถูกต้อง 100%: 
-    // คำนวณจากมุมความชันเส้นหูเทียบกับเส้นไหล่ 
-    // พ่อนั่งหน้าตรง เส้นหูจะขนานกับเส้นไหล่ ความต่าง = 0 องศา พอดี!
+    // 🎯 แก้ไขสูตรคำนวณมุมเอียงคอกระจกเงา (Mirror View Calculation)
     function calculateNeckTiltAngles(leftEar, rightEar, leftShoulder, rightShoulder) {
       if (!leftEar || !rightEar || !leftShoulder || !rightShoulder) return { left: 0, right: 0 };
 
@@ -478,15 +478,15 @@
       const sDy = (leftShoulder.y - rightShoulder.y) * canvasElement.height;
       const shoulderAngle = Math.atan2(sDy, sDx) * (180 / Math.PI);
 
-      // มุมความเบนของศีรษะออกจากไหล่ (นั่งตรงขนานกัน = 0 องศา)
+      // มุมความเบนศีรษะออกจากไหล่ (นั่งตรงขนานกัน = 0 องศาเป๊ะ)
       let tiltAngle = Math.round(earAngle - shoulderAngle);
 
       let leftAngle = 0;
       let rightAngle = 0;
 
-      // 🎯 ในภาพ Mirror View:
-      // เอียงคอไปทาง "ซ้ายมือของคุณ" ➔ ศีรษะเบนทวนเข็มบนหน้าจอ ➔ tiltAngle เป็นค่าลบ
-      // เอียงคอไปทาง "ขวามือของคุณ" ➔ ศีรษะเบนตามเข็มบนหน้าจอ ➔ tiltAngle เป็นค่าบวก
+      // 🎯 แก้ไขแมปทิศทางบวกลบให้ตรงกับ Mirror View:
+      // เมื่อคุณเอียงคอไปทาง "ซ้ายมือของคุณจริง" ศีรษะบนหน้าจอกระจกจะเอียงทวนเข็มนาฬิกา ➔ tiltAngle จะมีค่าติดลบ (< 0)
+      // เมื่อคุณเอียงคอไปทาง "ขวามือของคุณจริง" ศีรษะบนหน้าจอกระจกจะเอียงตามเข็มนาฬิกา ➔ tiltAngle จะมีค่าเป็นบวก (> 0)
       if (tiltAngle < 0) {
         leftAngle = Math.min(60, Math.abs(tiltAngle));
       } else if (tiltAngle > 0) {
@@ -525,7 +525,7 @@
 
         if (!isPoseSessionActive) return;
 
-        if (currentStep === 0) { // Step 0: ผู้เล่นต้องเอียงคอไปทางซ้ายมือของตนเอง
+        if (currentStep === 0) { // Step 0: ผู้เล่นต้องเอียงคอไปทางซ้ายมือของตนเอง (ต้องเอียงได้ >= 25°)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (angles.left >= STRETCH_ANGLE_MIN) {
@@ -552,7 +552,7 @@
               timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
             }
           } else {
-            // ไม่ถึง 15° หรือคอตรง -> สั่ง Reset ไทม์เมอร์ทันที
+            // ไม่ถึง 25° หรือคอตรง -> สั่ง Reset ไทม์เมอร์ทันที
             holdStartTime = null;
             camScoreVal.innerText = "0% (เอียงไม่ถึงเกณฑ์)";
             camScoreVal.style.color = "#FFD54F";
@@ -561,7 +561,7 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
-        else if (currentStep === 1) { // Step 1: ผู้เล่นต้องเอียงคอไปทางขวามือของตนเอง
+        else if (currentStep === 1) { // Step 1: ผู้เล่นต้องเอียงคอไปทางขวามือของตนเอง (ต้องเอียงได้ >= 25°)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (angles.right >= STRETCH_ANGLE_MIN) {
@@ -598,7 +598,7 @@
               }
             }
           } else {
-            // ไม่ถึง 15° หรือคอตรง -> สั่ง Reset ไทม์เมอร์ทันที
+            // ไม่ถึง 25° หรือคอตรง -> สั่ง Reset ไทม์เมอร์ทันที
             holdStartTime = null;
             camScoreVal.innerText = "0% (เอียงไม่ถึงเกณฑ์)";
             camScoreVal.style.color = "#FFD54F";
