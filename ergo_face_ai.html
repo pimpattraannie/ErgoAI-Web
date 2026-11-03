@@ -366,7 +366,7 @@
     function fallbackDefaultUser(reason) {
       isFaceScanFinished = true;
       const guestId = "User_001";
-      activeUser = { id: guestId, name: `ผู้ใช้งาน (${guestId})`, score: 0 };
+      activeUser = { id: guestId, name: `คุณ (${guestId})`, score: 0 };
       userDisplayName.innerText = activeUser.name;
       userRegType.innerText = reason;
       totalScoreVal.innerText = activeUser.score;
