@@ -464,14 +464,15 @@
       poseStatus.style.color = "#FFD54F";
     }
 
-    // 🎯 คำนวณองศาใบหน้า: ทำ Landmark Remapping สลับ 5 และ 2 ตรงนี้เลย
-    function calculateEyeLineTiltAngle(userLeftEye, userRightEye) {
-      if (!userLeftEye || !userRightEye) return { left: 0, right: 0 };
+    // 🎯 สูตรคำนวณองศาเอียงใบหน้าตามแนวตาสองข้าง
+    function calculateEyeTiltAngle(leftEye, rightEye) {
+      if (!leftEye || !rightEye) return { left: 0, right: 0 };
 
-      const lx = userLeftEye.x * canvasElement.width;
-      const ly = userLeftEye.y * canvasElement.height;
-      const rx = userRightEye.x * canvasElement.width;
-      const ry = userRightEye.y * canvasElement.height;
+      // พิกัด Pixel บน Canvas
+      const lx = leftEye.x * canvasElement.width;
+      const ly = leftEye.y * canvasElement.height;
+      const rx = rightEye.x * canvasElement.width;
+      const ry = rightEye.y * canvasElement.height;
 
       const dx = Math.abs(lx - rx);
       const dy = Math.abs(ly - ry);
@@ -481,12 +482,12 @@
       let userLeftDeg = 0;
       let userRightDeg = 0;
 
-      // เมื่อเอียงไปทางซ้ายมือผู้เล่นจริง -> userLeftEye จะต่ำกว่า userRightEye (ly > ry)
+      // 🎯 เช็กระดับ Y สรีระจริง:
+      // เมื่อผู้ใช้เอียงคอไปทาง "ซ้ายมือจริง" ➔ ตาซ้ายสรีระ (leftEye) จะต่ำลง ➔ ly > ry
+      // เมื่อผู้ใช้เอียงคอไปทาง "ขวามือจริง" ➔ ตาขวาสรีระ (rightEye) จะต่ำลง ➔ ry > ly
       if (ly > ry) {
         userLeftDeg = Math.min(60, angleDeg);
-      } 
-      // เมื่อเอียงไปทางขวามือผู้เล่นจริง -> userRightEye จะต่ำกว่า userLeftEye (ry > ly)
-      else if (ry > ly) {
+      } else if (ry > ly) {
         userRightDeg = Math.min(60, angleDeg);
       }
 
@@ -499,26 +500,29 @@
       if (currentExercise === 1) {
         exNameVal.innerText = "ท่าที่ 1: ยืดกล้ามเนื้อคอ (Neck Stretch)";
         
-        // 🎯 LANDMARK REMAPPING ตรงนี้ครับ!
-        // ในกระจกเงา: 5 (ขวาหน้าจอ) คือ "ตาซ้ายของผู้เล่น" / 2 (ซ้ายหน้าจอ) คือ "ตาขวาของผู้เล่น"
-        const userLeftEye = landmarks[5];   
-        const userRightEye = landmarks[2];  
-        
-        // ไหล่เช่นกัน: 12 (ขวาหน้าจอ) คือ "ไหล่ซ้ายของผู้เล่น" / 11 (ซ้ายหน้าจอ) คือ "ไหล่ขวาของผู้เล่น"
-        const userLeftShoulder = landmarks[12];
-        const userRightShoulder = landmarks[11];
+        // 🎯 ดึง Landmark ตรงตามสรีระร่างกายมนุษย์จริง:
+        // 7 = หูซ้ายสรีระ (Left Ear), 8 = หูขวาสรีระ (Right Ear)
+        // 11 = ไหล่ซ้ายสรีระ (Left Shoulder), 12 = ไหล่ขวาสรีระ (Right Shoulder)
+        // 2 = ตาซ้ายสรีระ (Left Eye), 5 = ตาขวาสรีระ (Right Eye)
+        const realLeftEar = landmarks[7];
+        const realRightEar = landmarks[8];
+        const realLeftShoulder = landmarks[11];
+        const realRightShoulder = landmarks[12];
+        const realLeftEye = landmarks[2];
+        const realRightEye = landmarks[5];
 
-        // วาดจุดและเส้นบน Mirror View
-        drawLine(userLeftEye, userRightEye, '#00E676');
-        drawLine(userLeftShoulder, userRightShoulder, '#29B6F6'); 
+        // 🎯 วาดเส้นสามเหลี่ยมดั้งเดิม (หู-ไหล่) บน Mirror View
+        drawLine(realLeftEar, realLeftShoulder, '#FF3D00');       
+        drawLine(realRightEar, realRightShoulder, '#FF9100');     
+        drawLine(realLeftShoulder, realRightShoulder, '#00E676'); 
 
-        drawPoint(userLeftEye, '#FF3D00');       
-        drawPoint(userRightEye, '#FF9100');      
-        drawPoint(userLeftShoulder, '#00E676');  
-        drawPoint(userRightShoulder, '#29B6F6'); 
+        drawPoint(realLeftEar, '#FF3D00');       
+        drawPoint(realRightEar, '#FF9100');      
+        drawPoint(realLeftShoulder, '#00E676');  
+        drawPoint(realRightShoulder, '#29B6F6'); 
 
-        // คำนวณองศาเอียงใบหน้าตามสรีระจริง
-        const angles = calculateEyeLineTiltAngle(userLeftEye, userRightEye);
+        // คำนวณองศาเอียงใบหน้า
+        const angles = calculateEyeTiltAngle(realLeftEye, realRightEye);
         
         leftAngleVal.innerText = angles.left;
         rightAngleVal.innerText = angles.right;
@@ -622,17 +626,15 @@
         drawLine(landmarks[12], landmarks[14], '#29B6F6');
         drawLine(landmarks[14], landmarks[16], '#FF9100');
 
-        // Remap สำหรับท่าข้ามอก:
-        // 16 = แขนขวาผู้เล่น, 11 = ไหล่ขวาหน้าจอ (คือไหล่ซ้ายผู้เล่น)
-        const userRightWrist = landmarks[16];
-        const userLeftShoulder = landmarks[11];
-        const userLeftWrist = landmarks[15];
-        const userRightShoulder = landmarks[12];
+        const rightWrist = landmarks[16];
+        const leftShoulder = landmarks[11];
+        const leftWrist = landmarks[15];
+        const rightShoulder = landmarks[12];
 
         if (currentStep === 0) {
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
-          // ดึงแขนขวาข้ามอกไปทางซ้าย: ข้อมือขวาต้องเลยไหล่ซ้ายไปทางขวาของหน้าจอ (x มากกว่า)
-          const isRightArmCrossed = userRightWrist.x > userLeftShoulder.x;
+          // ดึงแขนขวาข้ามอกไปทางซ้ายมือผู้ใช้ (ในหน้าจอกระจกเงา ข้อมือขวาต้องเคลื่อนไปทางซ้ายหน้าจอ คือ x น้อยกว่า ไหล่ซ้ายสรีระ)
+          const isRightArmCrossed = rightWrist.x < leftShoulder.x;
 
           if (isRightArmCrossed) {
             if (!holdStartTime) holdStartTime = currentTime;
@@ -668,8 +670,8 @@
         }
         else if (currentStep === 1) {
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
-          // ดึงแขนซ้ายข้ามอกไปทางขวา: ข้อมือซ้ายต้องเลยไหล่ขวาไปทางซ้ายของหน้าจอ (x น้อยกว่า)
-          const isLeftArmCrossed = userLeftWrist.x < userRightShoulder.x;
+          // ดึงแขนซ้ายข้ามอกไปทางขวามือผู้ใช้ (ในหน้าจอกระจกเงา ข้อมือซ้ายต้องเคลื่อนไปทางขวาหน้าจอ คือ x มากกว่า ไหล่ขวาสรีระ)
+          const isLeftArmCrossed = leftWrist.x > rightShoulder.x;
 
           if (isLeftArmCrossed) {
             if (!holdStartTime) holdStartTime = currentTime;
