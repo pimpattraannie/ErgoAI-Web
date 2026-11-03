@@ -234,9 +234,10 @@
 
     // System States
     let isFaceModelsLoaded = false;
+    let isStep1ScanningActive = false;
     let isPoseSessionActive = false;
-    let isScanningFaceVisual = false;
-    
+    let detectedFaceVisual = null; // { box, label, color }
+
     // MediaPipe Game Engine State
     let currentStep = 0;          // 0 = เอียงซ้ายยืดขวา, 1 = เอียงขวายืดซ้าย, 2 = สำเร็จ
     let currentRound = 1;
@@ -273,131 +274,136 @@
       }
     });
 
-    // --- 2. Step 1: Auto Face Identification & Visual Bounding Box ---
-    async function startAutoIdentificationFlow() {
+    // --- 2. Step 1: Trigger Scan Flow ---
+    function startAutoIdentificationFlow() {
       triggerModal.style.display = "none";
       summaryBox.style.display = "none";
       currentSessionScore = 0;
       isPoseSessionActive = false;
-      isScanningFaceVisual = true;
+      detectedFaceVisual = null;
       
       stepBadge.innerText = "STEP 1: Face ID Scanning";
       stepBadge.style.background = "#FF9100";
-      poseStatus.innerText = "🔍 กำลังสแกนใบหน้าเพื่อระบุตัวตน...";
+      poseStatus.innerText = "🔍 กำลังสแกนใบหน้าและค้นหาในระบบ...";
       poseStatus.style.color = "#FFD54F";
 
-      activeUser = null;
-      let boxColor = "#29B6F6";
-      let boxLabel = "กำลังตรวจจับ...";
-
-      if (isFaceModelsLoaded) {
-        try {
-          const detection = await faceapi.detectSingleFace(videoElement)
-                                        .withFaceLandmarks()
-                                        .withFaceDescriptor();
-
-          if (detection) {
-            const currentDescriptor = detection.descriptor;
-            const threshold = 0.60;
-            let matchedUser = null;
-
-            for (let user of knownFaces) {
-              if (!user.descriptor) continue;
-              const distance = faceapi.euclideanDistance(currentDescriptor, new Float32Array(user.descriptor));
-              if (distance < threshold) {
-                matchedUser = user;
-                break;
-              }
-            }
-
-            const box = detection.detection.box;
-
-            if (!matchedUser) {
-              // กรณีผู้ใช้ใหม่ ➔ สแกนเจอสร้างใหม่ ➔ กรอบสีส้ม
-              const newId = "User_" + String(knownFaces.length + 1).padStart(3, '0');
-              matchedUser = {
-                id: newId,
-                name: `ผู้ใช้ใหม่ (${newId})`,
-                descriptor: Array.from(currentDescriptor),
-                score: 0
-              };
-              knownFaces.push(matchedUser);
-              saveKnownFacesToStorage();
-              
-              userRegType.innerText = "Auto-Registered ใหม่";
-              userRegType.style.color = "#FF9100";
-              boxColor = "#FF9100"; 
-              boxLabel = `✨ ลงทะเบียนใหม่: ${matchedUser.name}`;
-            } else {
-              // กรณีผู้ใช้เดิมในระบบ ➔ กรอบสีเขียว
-              userRegType.innerText = "ผู้ใช้เดิมในระบบ";
-              userRegType.style.color = "#00E676";
-              boxColor = "#00E676";
-              boxLabel = `✅ ตรวจพบ: ${matchedUser.name}`;
-            }
-
-            activeUser = matchedUser;
-
-            // 🎯 วาดกรอบ Visual Bounding Box บน Canvas สดๆ
-            drawFaceBoundingBox(box, boxColor, boxLabel);
-          }
-        } catch (e) {
-          console.error("Face Detection Failed:", e);
-        }
-      }
-
-      // Fallback
-      if (!activeUser) {
-        if (knownFaces.length > 0) {
-          activeUser = knownFaces[0];
-          userRegType.innerText = "ผู้ใช้เดิม (Fallback)";
-        } else {
-          const guestId = "User_001";
-          activeUser = { id: guestId, name: `ผู้ใช้ใหม่ (${guestId})`, score: 0 };
-          knownFaces.push(activeUser);
-          saveKnownFacesToStorage();
-          userRegType.innerText = "Auto Profile (Guest)";
-        }
-      }
-
-      userDisplayName.innerText = activeUser.name;
-      totalScoreVal.innerText = activeUser.score;
-      poseStatus.innerText = `ระบุตัวตนสำเร็จ: ${activeUser.name}`;
-
-      // ค้างแสดงผลกรอบใบหน้าไว้ 2 วินาทีเพื่อให้ผู้ใช้เห็นชัดเจน ก่อนสลับไปเล่นเกม
-      setTimeout(() => {
-        isScanningFaceVisual = false;
-        startPoseGamificationSession();
-      }, 2000);
+      // เปิดแฟล็กให้เริ่มประมวลผล Face-API บนภาพวิดีโอสด
+      isStep1ScanningActive = true;
     }
 
-    // ฟังก์ชันวาดกรอบใบหน้าและ Label ข้อความ
+    // ฟังก์ชันประมวลผลสแกนหน้าแบบ Real-Time จากเฟรมวิดีโอสด
+    async function processFaceScanRealtime() {
+      if (!isFaceModelsLoaded) {
+        fallbackDefaultUser("Guest Profile (No Model)");
+        return;
+      }
+
+      try {
+        const detection = await faceapi.detectSingleFace(videoElement)
+                                      .withFaceLandmarks()
+                                      .withFaceDescriptor();
+
+        if (detection) {
+          const currentDescriptor = detection.descriptor;
+          const threshold = 0.60;
+          let matchedUser = null;
+
+          for (let user of knownFaces) {
+            if (!user.descriptor) continue;
+            const distance = faceapi.euclideanDistance(currentDescriptor, new Float32Array(user.descriptor));
+            if (distance < threshold) {
+              matchedUser = user;
+              break;
+            }
+          }
+
+          const box = detection.detection.box;
+
+          if (!matchedUser) {
+            const newId = "User_" + String(knownFaces.length + 1).padStart(3, '0');
+            matchedUser = {
+              id: newId,
+              name: `ผู้ใช้ใหม่ (${newId})`,
+              descriptor: Array.from(currentDescriptor),
+              score: 0
+            };
+            knownFaces.push(matchedUser);
+            saveKnownFacesToStorage();
+            
+            userRegType.innerText = "Auto-Registered ใหม่";
+            userRegType.style.color = "#FF9100";
+            detectedFaceVisual = {
+              box: box,
+              color: "#FF9100",
+              label: `✨ ลงทะเบียนใหม่: ${matchedUser.name}`
+            };
+          } else {
+            userRegType.innerText = "ผู้ใช้เดิมในระบบ";
+            userRegType.style.color = "#00E676";
+            detectedFaceVisual = {
+              box: box,
+              color: "#00E676",
+              label: `✅ ตรวจพบ: ${matchedUser.name}`
+            };
+          }
+
+          activeUser = matchedUser;
+          userDisplayName.innerText = activeUser.name;
+          totalScoreVal.innerText = activeUser.score;
+          poseStatus.innerText = `ระบุตัวตนสำเร็จ: ${activeUser.name}`;
+          poseStatus.style.color = "#00E676";
+
+          // สแกนเสร็จ ปิดโหมดสแกน ➔ รอ 2.5 วินาทีแล้วสลับเข้าเล่นเกม
+          isStep1ScanningActive = false;
+          setTimeout(() => {
+            detectedFaceVisual = null;
+            startPoseGamificationSession();
+          }, 2500);
+
+        } else {
+          // ถ้าเฟรมนี้ยังไม่เห็นหน้า ให้ลองสแกนต่อในเฟรมถัดไป
+          poseStatus.innerText = "🔍 มองไม่ชัด กรุณามองตรงมาที่กล้อง...";
+        }
+      } catch (e) {
+        console.error("Face Scan Error:", e);
+        fallbackDefaultUser("Error Fallback");
+      }
+    }
+
+    function fallbackDefaultUser(reason) {
+      isStep1ScanningActive = false;
+      const guestId = "User_001";
+      activeUser = { id: guestId, name: `ผู้ใช้งาน (${guestId})`, score: 0 };
+      userDisplayName.innerText = activeUser.name;
+      userRegType.innerText = reason;
+      totalScoreVal.innerText = activeUser.score;
+      startPoseGamificationSession();
+    }
+
+    // ฟังก์ชันวาดกรอบสแกนหน้าและป้ายชื่อสดๆ บน Canvas
     function drawFaceBoundingBox(box, color, labelText) {
       canvasCtx.save();
-      // ย้ายพิกัดให้ตรงตามกระจกเงา Mirror (scale -1, 1)
-      canvasCtx.translate(canvasElement.width, 0);
-      canvasCtx.scale(-1, 1);
-
-      // คำนวณพิกัดจากกล้อง (640x480)
-      const x = canvasElement.width - box.x - box.width; // Mirror X
+      // คำนวณพิกัดให้ตรงกับ Canvas Mirror (scale -1, 1)
+      const x = canvasElement.width - box.x - box.width;
       const y = box.y;
       const width = box.width;
       const height = box.height;
 
-      // 1. วาดกรอบสี่เหลี่ยมรอบใบหน้า
+      // 1. วาดกรอบรอบใบหน้า
       canvasCtx.strokeStyle = color;
       canvasCtx.lineWidth = 4;
       canvasCtx.strokeRect(x, y, width, height);
 
-      // 2. วาดแถบพื้นหลังข้อความ Label
+      // 2. วาดพื้นหลัง Label ข้อความด้านบน
       canvasCtx.fillStyle = color;
       canvasCtx.font = "bold 16px 'Segoe UI', Tahoma, sans-serif";
       const textWidth = canvasCtx.measureText(labelText).width;
-      canvasCtx.fillRect(x, y - 30 > 0 ? y - 30 : y, textWidth + 16, 28);
+      const labelY = y - 30 > 0 ? y - 30 : y;
+      canvasCtx.fillRect(x, labelY, textWidth + 16, 28);
 
-      // 3. พิมพ์ข้อความชื่อผู้ใช้
+      // 3. พิมพ์ตัวหนังสือชื่อผู้ใช้
       canvasCtx.fillStyle = "#121212";
-      canvasCtx.fillText(labelText, x + 8, y - 30 > 0 ? y - 10 : y + 20);
+      canvasCtx.fillText(labelText, x + 8, labelY + 20);
 
       canvasCtx.restore();
     }
@@ -417,7 +423,7 @@
       poseStatus.style.color = "#FFD54F";
     }
 
-    // --- 4. Motion Analysis ---
+    // --- 4. Motion Analysis & Camera Render Loop ---
     function calculateVectorAngle(vertex, ear, oppositeShoulder) {
       if (!vertex || !ear || !oppositeShoulder) return 90;
       const v1 = { x: ear.x - vertex.x, y: ear.y - vertex.y };
@@ -434,22 +440,32 @@
     }
 
     function onResults(results) {
-      // หากกำลังอยู่ในโหมดค้างแสดงกรอบสแกนหน้า ให้อยู่เฉยๆ
-      if (isScanningFaceVisual) return;
-
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
+      // วาดภาพวิดีโอกระจกเงา (Mirror View)
       canvasCtx.translate(canvasElement.width, 0);
       canvasCtx.scale(-1, 1);
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
+      // 🎯 ถ้าอยู่ในช่วง STEP 1 (กำลังสแกนหน้า) ➔ เรียกฟังก์ชันประมวลผลสแกนและวาดกรอบบนหน้าสดๆ
+      if (isStep1ScanningActive) {
+        processFaceScanRealtime();
+      }
+
+      // วาดกรอบใบหน้าสีเขียว/ส้ม ค้างไว้ให้ผู้ใช้เห็นชื่อตนเอง
+      if (detectedFaceVisual) {
+        drawFaceBoundingBox(detectedFaceVisual.box, detectedFaceVisual.color, detectedFaceVisual.label);
+      }
+
+      // 🎯 เมื่ออยู่ในช่วง STEP 2 (MediaPipe Pose Engine)
       if (results.poseLandmarks) {
         const rawLeftEar = results.poseLandmarks[7];        
         const rawRightEar = results.poseLandmarks[8];       
         const rawLeftShoulder = results.poseLandmarks[11];  
         const rawRightShoulder = results.poseLandmarks[12]; 
 
+        // วาด Skeleton
         drawLine(rawLeftEar, rawLeftShoulder, '#FF3D00');       
         drawLine(rawRightEar, rawRightShoulder, '#FF9100');     
         drawLine(rawLeftShoulder, rawRightShoulder, '#00E676'); 
