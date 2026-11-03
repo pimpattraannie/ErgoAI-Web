@@ -234,6 +234,7 @@
     let isPoseSessionActive = false;
     let isScanningInProgress = false;
     let lastScanTime = 0;
+    let lastPoseFrameTime = 0;
     let detectedFaceBox = null;
     let currentPoseLandmarks = null;
 
@@ -244,7 +245,7 @@
     const TOTAL_ROUNDS = 2;
     let holdStartTime = null;
     const HOLD_DURATION = 15;
-    const STRETCH_ANGLE_MIN = 18; 
+    const STRETCH_ANGLE_MIN = 15; // 🎯 เกณฑ์ความเอียงคอที่ตอบสนองไว ปรับลดลงให้พอเหมาะกับการเอียงจริง
 
     // IoT & User Database State
     let simulatedFSRRelaxed = false;
@@ -294,10 +295,11 @@
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-        // กลับภาพเป็นกระจกเงา
+        // วาดวิดีโอบน Canvas แบบสะท้อนกระจก
         canvasCtx.translate(canvasElement.width, 0);
         canvasCtx.scale(-1, 1);
         canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+        canvasCtx.restore(); // คืนค่า Matrix เพื่อให้การวาดจุดปรกติคำนวณตำแหน่งพิกัดได้ถูกต้อง
 
         const now = Date.now();
 
@@ -309,9 +311,10 @@
 
         // วาดกรอบสี่เหลี่ยมรอบใบหน้า
         if (detectedFaceBox) {
+          const mirroredX = canvasElement.width - detectedFaceBox.box.x - detectedFaceBox.box.width;
           canvasCtx.strokeStyle = detectedFaceBox.color;
           canvasCtx.lineWidth = 4;
-          canvasCtx.strokeRect(detectedFaceBox.box.x, detectedFaceBox.box.y, detectedFaceBox.box.width, detectedFaceBox.box.height);
+          canvasCtx.strokeRect(mirroredX, detectedFaceBox.box.y, detectedFaceBox.box.width, detectedFaceBox.box.height);
         }
 
         // STEP 2: คำนวณ + วาดจุด Skeleton MediaPipe Pose
@@ -319,10 +322,9 @@
           processPoseGamification(currentPoseLandmarks);
         }
 
-        canvasCtx.restore();
-
-        // ส่งวิดีโอเข้าวิเคราะห์ MediaPipe Pose ใน Background
-        if (pose && isPoseSessionActive && now - lastScanTime > 60) {
+        // 🎯 ส่งภาพเข้า MediaPipe Pose แบบแยกตัวแปรเวลา ไม่ติด Throttling
+        if (pose && isPoseSessionActive && now - lastPoseFrameTime > 40) {
+          lastPoseFrameTime = now;
           pose.send({ image: videoElement }).catch(()=>{});
         }
       }
@@ -451,12 +453,14 @@
       poseStatus.style.color = "#FFD54F";
     }
 
+    // 🎯 คำนวณองศาความเอียงระหว่างหูกับไหล่
     function calculateNeckTiltAngle(ear, shoulder) {
       if (!ear || !shoulder) return 0;
-      const dy = Math.abs(ear.y - shoulder.y);
-      const dx = Math.abs(ear.x - shoulder.x);
-      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-      return Math.max(0, Math.round(90 - angle));
+      const dy = ear.y - shoulder.y;
+      const dx = ear.x - shoulder.x;
+      const angleRad = Math.atan2(dy, dx);
+      const angleDeg = Math.abs(angleRad * (180 / Math.PI));
+      return Math.max(0, Math.round(90 - angleDeg));
     }
 
     // 🎯 วาดจุด Skeleton & ประมวลผลเกม 2 ท่าบริหาร
@@ -474,6 +478,7 @@
         const rawLeftShoulder = landmarks[11];  
         const rawRightShoulder = landmarks[12]; 
 
+        // 🎯 วาดเส้นและจุดพิกัด Skeleton ลอยบนจอสดกระจกเงา
         drawLine(rawLeftEar, rawLeftShoulder, '#FF3D00');       
         drawLine(rawRightEar, rawRightShoulder, '#FF9100');     
         drawLine(rawLeftShoulder, rawRightShoulder, '#00E676'); 
@@ -483,6 +488,7 @@
         drawPoint(rawLeftShoulder, '#00E676');  
         drawPoint(rawRightShoulder, '#29B6F6'); 
 
+        // คำนวณองศาเอียงคอ
         const leftNeckAngle = calculateNeckTiltAngle(rawLeftEar, rawLeftShoulder);
         const rightNeckAngle = calculateNeckTiltAngle(rawRightEar, rawRightShoulder);
 
@@ -491,7 +497,7 @@
 
         if (!isPoseSessionActive) return;
 
-        if (currentStep === 0) { // เอียงซ้าย
+        if (currentStep === 0) { // เอียงซ้าย (มุมมองผู้เล่น)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (leftNeckAngle >= STRETCH_ANGLE_MIN) {
@@ -526,7 +532,7 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
-        else if (currentStep === 1) { // เอียงขวา
+        else if (currentStep === 1) { // เอียงขวา (มุมมองผู้เล่น)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (rightNeckAngle >= STRETCH_ANGLE_MIN) {
@@ -599,7 +605,8 @@
 
         if (currentStep === 0) { // ยืดแขนขวาข้ามอก
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
-          const isRightArmCrossed = rightWrist.x < leftShoulder.x;
+          // ในมุมมองกระจกเงา ข้อมือขวาต้องไขว้ข้ามไปทางขวาของหน้าจอ (x มากกว่า)
+          const isRightArmCrossed = rightWrist.x > leftShoulder.x;
 
           if (isRightArmCrossed) {
             if (!holdStartTime) holdStartTime = currentTime;
@@ -633,9 +640,9 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         }
-        else if (currentStep === 1) { // ยืดแขนซ้ายข้ามอก[cite: 3]
+        else if (currentStep === 1) { // ยืดแขนซ้ายข้ามอก
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
-          const isLeftArmCrossed = leftWrist.x > rightShoulder.x;
+          const isLeftArmCrossed = leftWrist.x < rightShoulder.x;
 
           if (isLeftArmCrossed) {
             if (!holdStartTime) holdStartTime = currentTime;
@@ -772,11 +779,17 @@
       }
     }
 
+    // 🎯 คำนวณพิกัดสะท้อนกระจกสำหรับวาดจุดและเส้นบน Canvas
     function drawLine(from, to, color = '#FFFFFF') {
       if (!from || !to) return;
+      const x1 = (1 - from.x) * canvasElement.width;
+      const y1 = from.y * canvasElement.height;
+      const x2 = (1 - to.x) * canvasElement.width;
+      const y2 = to.y * canvasElement.height;
+
       canvasCtx.beginPath();
-      canvasCtx.moveTo(from.x * canvasElement.width, from.y * canvasElement.height);
-      canvasCtx.lineTo(to.x * canvasElement.width, to.y * canvasElement.height);
+      canvasCtx.moveTo(x1, y1);
+      canvasCtx.lineTo(x2, y2);
       canvasCtx.lineWidth = 4;
       canvasCtx.strokeStyle = color;
       canvasCtx.stroke();
@@ -784,8 +797,11 @@
 
     function drawPoint(landmark, color = '#00E676') {
       if (!landmark) return;
+      const x = (1 - landmark.x) * canvasElement.width;
+      const y = landmark.y * canvasElement.height;
+
       canvasCtx.beginPath();
-      canvasCtx.arc(landmark.x * canvasElement.width, landmark.y * canvasElement.height, 8, 0, 2 * Math.PI);
+      canvasCtx.arc(x, y, 8, 0, 2 * Math.PI);
       canvasCtx.fillStyle = color;
       canvasCtx.fill();
     }
