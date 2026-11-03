@@ -52,36 +52,11 @@
 
     .card h3 { color: #29B6F6; margin-top: 0; }
 
-    /* Canvas Wrapper */
-    .canvas-wrapper {
-      position: relative;
-      display: inline-block;
-      width: 640px;
-      height: 480px;
-      max-width: 100%;
-    }
-
     canvas {
       border: 3px solid #00E676;
       border-radius: 12px;
-      width: 100%;
-      height: 100%;
-    }
-
-    /* 🎯 HTML Label Badge แบบซ้อนทับ (อ่านออก 100% ไม่ยุ่งกับ Canvas Context) */
-    .face-html-label {
-      position: absolute;
-      display: none;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 16px;
-      font-weight: bold;
-      color: #121212;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-      z-index: 10;
-      white-space: nowrap;
-      pointer-events: none;
-      transition: all 0.1s ease;
+      max-width: 100%;
+      height: auto;
     }
 
     .score-board {
@@ -118,15 +93,35 @@
     }
 
     button:hover { background: #00B0FF; color: #FFF; }
+    button:disabled { background: #555 !important; color: #888 !important; cursor: not-allowed; }
+
+    /* Modal Pop-up */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85);
+      justify-content: center;
+      align-items: center;
+      z-index: 999;
+    }
+
+    .modal-content {
+      background: #222;
+      padding: 30px;
+      border-radius: 15px;
+      text-align: center;
+      border: 2px solid #00E676;
+      max-width: 420px;
+    }
 
     .step-indicator {
       display: inline-block;
-      padding: 4px 14px;
+      padding: 3px 10px;
       border-radius: 12px;
-      font-size: 14px;
-      font-weight: bold;
-      background: #FF9100;
-      color: #121212;
+      font-size: 13px;
+      background: #333;
+      color: #29B6F6;
       margin-bottom: 8px;
     }
 
@@ -151,18 +146,16 @@
       <div class="score-board">
         <div class="step-indicator" id="step-badge">STEP 1: Face ID Scanning</div>
         <div id="round-val" style="color: #29B6F6;">รอบที่ 1 / 2</div>
-        <div>สถานะ: <span id="pose-status" class="status">กำลังเริ่มต้นระบบและโหลดโมเดล...</span></div>
+        <div>สถานะ: <span id="pose-status" class="status">กำลังโหลดโมเดลใบหน้า...</span></div>
         <div class="timer" id="timer-val">⏱️ 15</div>
         <div style="font-size: 14px; color: #aaa; margin-top: 5px;">
           มุมเอียงซ้ายจริง: <span id="left-angle">0</span>° | มุมเอียงขวาจริง: <span id="right-angle">0</span>°
         </div>
       </div>
 
-      <div class="canvas-wrapper">
+      <div style="position: relative; display: inline-block;">
         <video id="webcam" style="display:none;" autoplay playsinline></video>
         <canvas id="output_canvas" width="640" height="480"></canvas>
-        <!-- HTML Overlay Label -->
-        <div id="face-label-tag" class="face-html-label"></div>
       </div>
 
       <!-- สรุปคะแนนหลังทำกายบริหารเสร็จ -->
@@ -175,26 +168,29 @@
 
     <!-- ฝั่งขวา: IoT Dashboard & User Profile Management -->
     <div class="sidebar">
+      <!-- แสดงผู้ใช้งานที่ระบุตัวตนได้ -->
       <div class="card">
         <h3>👤 Active User Profile</h3>
-        <div>ชื่อผู้ใช้: <b id="user-display-name" style="color: #29B6F6;">กำลังสแกนใบหน้า...</b></div>
+        <div>ชื่อผู้ใช้: <b id="user-display-name" style="color: #29B6F6;">ยังไม่ระบุตัวตน</b></div>
         <div>สถานะโปรไฟล์: <span id="user-reg-type" style="color: #aaa;">-</span></div>
         <div style="margin-top: 8px;">คะแนนสะสมรวม: <b id="total-score-val" style="color: #00E676;">0</b> XP</div>
         <button onclick="clearFaceDatabase()" style="background: #D32F2F; color: white; margin-top: 10px;">🗑️ ล้างฐานข้อมูลใบหน้า</button>
       </div>
 
+      <!-- จำลองสถานะ Hardware Node 1-3 -->
       <div class="card">
         <h3>📡 Hardware Nodes Status</h3>
-        <p>Node 1 (Seat FSR): <span id="node1-status" class="sensor-badge badge-warn">Stagnant (นั่งนาน)</span></p>
+        <p>Node 1 (Seat FSR): <span id="node1-status" class="sensor-badge badge-ok">Normal</span></p>
         <p>Node 2 (Wearable IMU): <span id="node2-status" class="sensor-badge badge-ok">Connected</span></p>
         <p>Node 3 (Relief Actuator): <span id="node3-status" class="sensor-badge badge-ok">Ready</span></p>
         
         <hr style="border-color: #444;">
         <p style="font-size: 13px; color: #bbb; margin-bottom: 5px;">🛠️ <b>IoT Signal Simulator</b></p>
-        <button id="btn-trigger" onclick="triggerIntervention()">⚡ 1. รีสตาร์ทสแกนหน้าใหม่ (Simulate Node 1)</button>
+        <button id="btn-trigger" onclick="triggerIntervention()" disabled>⚡ 1. จำลองเซนเซอร์เจอนั่งนาน (Trigger Pop-up)</button>
         <button onclick="toggleFSRRelaxation()" style="background: #FF9100; color: white;">🔄 2. จำลองค่า FSR คลายแรงกด (+Bonus)</button>
       </div>
 
+      <!-- สรุปผล Hybrid Score -->
       <div class="card">
         <h3>📊 Real-time Hybrid Score</h3>
         <div>Camera Accuracy: <b id="cam-score">0%</b></div>
@@ -203,11 +199,20 @@
     </div>
   </div>
 
+  <!-- Pop-up เตือนเมื่อเซนเซอร์เจอนั่งนาน -->
+  <div id="trigger-modal" class="modal">
+    <div class="modal-content">
+      <h2 style="color: #FFD54F;">⚠️ สัญญาณเตือนจากเก้าอี้ (Node 1)</h2>
+      <p>คุณนั่งกดทับท่าเดิมติดต่อกันนานเกินไปแล้ว!</p>
+      <p>ระบบจะสแกนใบหน้าและเริ่มนำออกกายบริหารยืดคอทันที</p>
+      <button id="btn-start-flow" onclick="startAutoIdentificationFlow()">🚀 เริ่มสแกนหน้า & ออกกำลังกาย</button>
+    </div>
+  </div>
+
   <script>
     const videoElement = document.getElementById('webcam');
     const canvasElement = document.getElementById('output_canvas');
     const canvasCtx = canvasElement.getContext('2d');
-    const faceLabelTag = document.getElementById('face-label-tag');
     
     // UI Elements
     const poseStatus = document.getElementById('pose-status');
@@ -218,29 +223,28 @@
     const totalScoreVal = document.getElementById('total-score-val');
     const camScoreVal = document.getElementById('cam-score');
     const sensorScoreVal = document.getElementById('sensor-score');
+    const triggerModal = document.getElementById('trigger-modal');
     const stepBadge = document.getElementById('step-badge');
     const userDisplayName = document.getElementById('user-display-name');
     const userRegType = document.getElementById('user-reg-type');
+    const btnTrigger = document.getElementById('btn-trigger');
     const summaryBox = document.getElementById('summary-box');
     const sessionPts = document.getElementById('session-pts');
     const summaryDetail = document.getElementById('summary-detail');
 
     // System States
     let isFaceModelsLoaded = false;
-    let currentSystemStep = 1;     // 1 = Face ID Scan, 2 = Pose Game Session
-    let isFaceScanFinished = false;
+    let isStep1ScanningActive = false;
     let isPoseSessionActive = false;
-    let isScanningInProgress = false;
-    let lastScanTime = 0;
-    let detectedFaceBox = null;
+    let detectedFaceVisual = null; // { box, label, color }
 
     // MediaPipe Game Engine State
-    let currentStep = 0;          
+    let currentStep = 0;          // 0 = เอียงซ้ายยืดขวา, 1 = เอียงขวายืดซ้าย, 2 = สำเร็จ
     let currentRound = 1;
     const TOTAL_ROUNDS = 2;
     let holdStartTime = null;
     const HOLD_DURATION = 15;
-    const STRETCH_ANGLE_MIN = 70; 
+    const STRETCH_ANGLE_MIN = 70; // เกณฑ์องศายืดตึงกำลังดี
 
     // IoT & User Database State
     let simulatedFSRRelaxed = false;
@@ -260,24 +264,39 @@
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
         
         isFaceModelsLoaded = true;
-        poseStatus.innerText = "🔍 พร้อมสแกน! กรุณามองตรงมาที่กล้อง...";
+        btnTrigger.disabled = false;
+        poseStatus.innerText = "รอสัญญาณเตือนจากเก้าอี้ (Node 1)...";
         console.log("✅ Face-API Models Loaded Successfully");
       } catch (err) {
         console.warn("⚠️ Face-API Model Load Error:", err);
-        poseStatus.innerText = "⚠️ ไม่สามารถโหลดโมเดลสแกนหน้าได้ (ใช้โหมดสำรอง)";
+        poseStatus.innerText = "⚠️ ไม่สามารถโหลดโมเดลสแกนหน้าได้ (ระบบจะใช้โหมดสำรอง)";
+        btnTrigger.disabled = false;
       }
     });
 
-    // --- 2. Step 1: Real-time Face Identification ---
-    async function processFaceScanRealtime() {
-      if (isFaceScanFinished || isScanningInProgress) return;
+    // --- 2. Step 1: Trigger Scan Flow ---
+    function startAutoIdentificationFlow() {
+      triggerModal.style.display = "none";
+      summaryBox.style.display = "none";
+      currentSessionScore = 0;
+      isPoseSessionActive = false;
+      detectedFaceVisual = null;
+      
+      stepBadge.innerText = "STEP 1: Face ID Scanning";
+      stepBadge.style.background = "#FF9100";
+      poseStatus.innerText = "🔍 กำลังสแกนใบหน้าและค้นหาในระบบ...";
+      poseStatus.style.color = "#FFD54F";
 
+      // เปิดแฟล็กให้เริ่มประมวลผล Face-API บนภาพวิดีโอสด
+      isStep1ScanningActive = true;
+    }
+
+    // ฟังก์ชันประมวลผลสแกนหน้าแบบ Real-Time จากเฟรมวิดีโอสด
+    async function processFaceScanRealtime() {
       if (!isFaceModelsLoaded) {
         fallbackDefaultUser("Guest Profile (No Model)");
         return;
       }
-
-      isScanningInProgress = true;
 
       try {
         const detection = await faceapi.detectSingleFace(videoElement)
@@ -299,8 +318,6 @@
           }
 
           const box = detection.detection.box;
-          let labelText = "";
-          let bgColor = "#00E676";
 
           if (!matchedUser) {
             const newId = "User_" + String(knownFaces.length + 1).padStart(3, '0');
@@ -315,56 +332,46 @@
             
             userRegType.innerText = "Auto-Registered ใหม่";
             userRegType.style.color = "#FF9100";
-            bgColor = "#FF9100";
-            labelText = `✨ ลงทะเบียนใหม่: ${matchedUser.name}`;
+            detectedFaceVisual = {
+              box: box,
+              color: "#FF9100",
+              label: `✨ ลงทะเบียนใหม่: ${matchedUser.name}`
+            };
           } else {
             userRegType.innerText = "ผู้ใช้เดิมในระบบ";
             userRegType.style.color = "#00E676";
-            bgColor = "#00E676";
-            labelText = `✅ ตรวจพบ: ${matchedUser.name}`;
+            detectedFaceVisual = {
+              box: box,
+              color: "#00E676",
+              label: `✅ ตรวจพบ: ${matchedUser.name}`
+            };
           }
 
           activeUser = matchedUser;
           userDisplayName.innerText = activeUser.name;
           totalScoreVal.innerText = activeUser.score;
-          poseStatus.innerText = `ยืนยันตัวตนสำเร็จ: ${activeUser.name}`;
+          poseStatus.innerText = `ระบุตัวตนสำเร็จ: ${activeUser.name}`;
           poseStatus.style.color = "#00E676";
 
-          // 🎯 แสดงผล HTML Overlay Label (ลื่นไหล ไม่ยุ่งกับ Canvas Context)
-          showHTMLLabel(box, bgColor, labelText);
-          detectedFaceBox = { box: box, color: bgColor };
-
-          isFaceScanFinished = true;
+          // สแกนเสร็จ ปิดโหมดสแกน ➔ รอ 2.5 วินาทีแล้วสลับเข้าเล่นเกม
+          isStep1ScanningActive = false;
           setTimeout(() => {
-            faceLabelTag.style.display = "none";
-            detectedFaceBox = null;
+            detectedFaceVisual = null;
             startPoseGamificationSession();
-          }, 3000);
+          }, 2500);
 
         } else {
-          poseStatus.innerText = "🔍 กรุณามองตรงมาที่กล้องเพื่อระบุตัวตน...";
-          poseStatus.style.color = "#FFD54F";
+          // ถ้าเฟรมนี้ยังไม่เห็นหน้า ให้ลองสแกนต่อในเฟรมถัดไป
+          poseStatus.innerText = "🔍 มองไม่ชัด กรุณามองตรงมาที่กล้อง...";
         }
       } catch (e) {
         console.error("Face Scan Error:", e);
-      } finally {
-        isScanningInProgress = false;
+        fallbackDefaultUser("Error Fallback");
       }
     }
 
-    function showHTMLLabel(box, color, text) {
-      const mirroredX = canvasElement.width - box.x - box.width;
-      const topY = Math.max(box.y - 40, 10);
-
-      faceLabelTag.style.background = color;
-      faceLabelTag.style.left = `${mirroredX}px`;
-      faceLabelTag.style.top = `${topY}px`;
-      faceLabelTag.innerText = text;
-      faceLabelTag.style.display = "block";
-    }
-
     function fallbackDefaultUser(reason) {
-      isFaceScanFinished = true;
+      isStep1ScanningActive = false;
       const guestId = "User_001";
       activeUser = { id: guestId, name: `ผู้ใช้งาน (${guestId})`, score: 0 };
       userDisplayName.innerText = activeUser.name;
@@ -373,9 +380,36 @@
       startPoseGamificationSession();
     }
 
+    // ฟังก์ชันวาดกรอบสแกนหน้าและป้ายชื่อสดๆ บน Canvas
+    function drawFaceBoundingBox(box, color, labelText) {
+      canvasCtx.save();
+      // คำนวณพิกัดให้ตรงกับ Canvas Mirror (scale -1, 1)
+      const x = canvasElement.width - box.x - box.width;
+      const y = box.y;
+      const width = box.width;
+      const height = box.height;
+
+      // 1. วาดกรอบรอบใบหน้า
+      canvasCtx.strokeStyle = color;
+      canvasCtx.lineWidth = 4;
+      canvasCtx.strokeRect(x, y, width, height);
+
+      // 2. วาดพื้นหลัง Label ข้อความด้านบน
+      canvasCtx.fillStyle = color;
+      canvasCtx.font = "bold 16px 'Segoe UI', Tahoma, sans-serif";
+      const textWidth = canvasCtx.measureText(labelText).width;
+      const labelY = y - 30 > 0 ? y - 30 : y;
+      canvasCtx.fillRect(x, labelY, textWidth + 16, 28);
+
+      // 3. พิมพ์ตัวหนังสือชื่อผู้ใช้
+      canvasCtx.fillStyle = "#121212";
+      canvasCtx.fillText(labelText, x + 8, labelY + 20);
+
+      canvasCtx.restore();
+    }
+
     // --- 3. Step 2: MediaPipe Pose Gamification Engine ---
     function startPoseGamificationSession() {
-      currentSystemStep = 2;
       stepBadge.innerText = "STEP 2: MediaPipe Motion Engine";
       stepBadge.style.background = "#00E676";
       
@@ -389,7 +423,7 @@
       poseStatus.style.color = "#FFD54F";
     }
 
-    // --- 4. Camera & Render Loop ---
+    // --- 4. Motion Analysis & Camera Render Loop ---
     function calculateVectorAngle(vertex, ear, oppositeShoulder) {
       if (!vertex || !ear || !oppositeShoulder) return 90;
       const v1 = { x: ear.x - vertex.x, y: ear.y - vertex.y };
@@ -409,36 +443,29 @@
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-      // วาดภาพวิดีโอมุมมองกระจกเงามาตรฐาน
+      // วาดภาพวิดีโอกระจกเงา (Mirror View)
       canvasCtx.translate(canvasElement.width, 0);
       canvasCtx.scale(-1, 1);
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-      const now = Date.now();
-
-      // STEP 1: สแกนใบหน้า
-      if (currentSystemStep === 1) {
-        if (now - lastScanTime > 500) {
-          lastScanTime = now;
-          processFaceScanRealtime();
-        }
+      // 🎯 ถ้าอยู่ในช่วง STEP 1 (กำลังสแกนหน้า) ➔ เรียกฟังก์ชันประมวลผลสแกนและวาดกรอบบนหน้าสดๆ
+      if (isStep1ScanningActive) {
+        processFaceScanRealtime();
       }
 
-      // วาดกรอบสี่เหลี่ยมรอบใบหน้าบน Canvas แบบตรงๆ ไม่ยุ่งกับ Context
-      if (detectedFaceBox) {
-        const mirroredX = canvasElement.width - detectedFaceBox.box.x - detectedFaceBox.box.width;
-        canvasCtx.strokeStyle = detectedFaceBox.color;
-        canvasCtx.lineWidth = 4;
-        canvasCtx.strokeRect(mirroredX, detectedFaceBox.box.y, detectedFaceBox.box.width, detectedFaceBox.box.height);
+      // วาดกรอบใบหน้าสีเขียว/ส้ม ค้างไว้ให้ผู้ใช้เห็นชื่อตนเอง
+      if (detectedFaceVisual) {
+        drawFaceBoundingBox(detectedFaceVisual.box, detectedFaceVisual.color, detectedFaceVisual.label);
       }
 
-      // STEP 2: ทำเกมยืดคอ MediaPipe
-      if (currentSystemStep === 2 && results.poseLandmarks) {
+      // 🎯 เมื่ออยู่ในช่วง STEP 2 (MediaPipe Pose Engine)
+      if (results.poseLandmarks) {
         const rawLeftEar = results.poseLandmarks[7];        
         const rawRightEar = results.poseLandmarks[8];       
         const rawLeftShoulder = results.poseLandmarks[11];  
         const rawRightShoulder = results.poseLandmarks[12]; 
 
+        // วาด Skeleton
         drawLine(rawLeftEar, rawLeftShoulder, '#FF3D00');       
         drawLine(rawRightEar, rawRightShoulder, '#FF9100');     
         drawLine(rawLeftShoulder, rawRightShoulder, '#00E676'); 
@@ -461,6 +488,7 @@
 
         const currentTime = Date.now();
 
+        // Step 0: สั่งเอียงคอไปทาง "ซ้ายมือของคุณ"
         if (currentStep === 0) {
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
@@ -496,6 +524,7 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
+        // Step 1: สั่งเอียงคอไปทาง "ขวามือของคุณ"
         else if (currentStep === 1) {
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
@@ -536,6 +565,7 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
+        // Step 2: สำเร็จ
         else if (currentStep === 2) {
           roundVal.innerText = "ภารกิจเสร็จสิ้น";
           poseStatus.innerText = `🎉 ยอดเยี่ยม! บันทึกคะแนนให้ ${activeUser.name} เรียบร้อยแล้ว`;
@@ -554,32 +584,18 @@
       canvasCtx.restore();
     }
 
-    // --- 5. Helper Functions ---
-    function triggerIntervention() {
-      currentSystemStep = 1;
-      isFaceScanFinished = false;
-      isPoseSessionActive = false;
-      isScanningInProgress = false;
-      detectedFaceBox = null;
-      faceLabelTag.style.display = "none";
-      summaryBox.style.display = "none";
-      currentSessionScore = 0;
-
-      stepBadge.innerText = "STEP 1: Face ID Scanning";
-      stepBadge.style.background = "#FF9100";
-      poseStatus.innerText = "🔍 สัญญาณ Node 1 แจ้งเตือน! กำลังสแกนใบหน้า...";
-      poseStatus.style.color = "#FFD54F";
-      userDisplayName.innerText = "กำลังสแกนใบหน้า...";
-
-      document.getElementById('node1-status').className = "sensor-badge badge-warn";
-      document.getElementById('node1-status').innerText = "Stagnant (นั่งนาน)";
-    }
-
+    // --- 5. Helper & Storage Functions ---
     function addScoreToActiveUser(pts) {
       if (!activeUser) return;
       activeUser.score += pts;
       totalScoreVal.innerText = activeUser.score;
       saveKnownFacesToStorage();
+    }
+
+    function triggerIntervention() {
+      document.getElementById('node1-status').className = "sensor-badge badge-warn";
+      document.getElementById('node1-status').innerText = "Stagnant (นั่งนาน)";
+      triggerModal.style.display = "flex";
     }
 
     function toggleFSRRelaxation() {
@@ -611,7 +627,6 @@
         userRegType.innerText = "-";
         totalScoreVal.innerText = "0";
         summaryBox.style.display = "none";
-        faceLabelTag.style.display = "none";
         alert("ล้างฐานข้อมูลเรียบร้อยแล้ว!");
       }
     }
