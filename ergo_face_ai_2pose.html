@@ -61,7 +61,6 @@
       max-width: 100%;
     }
 
-    /*  ใช้ visibility: hidden แทน display: none เพื่อป้องกันปัญหากล้องหยุดส่งภาพในระบบ */
     #webcam {
       position: absolute;
       width: 1px;
@@ -171,11 +170,9 @@
       <div class="canvas-wrapper">
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="output_canvas" width="640" height="480"></canvas>
-        <!-- HTML Overlay Label -->
         <div id="face-label-tag" class="face-html-label"></div>
       </div>
 
-      <!-- สรุปคะแนนหลังทำกายบริหารเสร็จ -->
       <div id="summary-box" class="session-summary-box">
         <h3 style="color: #00E676; margin-top: 0;">🎉 สรุปผลคะแนนรอบนี้ (Session Summary)</h3>
         <p style="font-size: 18px; margin: 5px 0;">คะแนนที่ได้ในรอบนี้: <b id="session-pts" style="color: #FFD54F; font-size: 26px;">+0</b> XP</p>
@@ -183,7 +180,7 @@
       </div>
     </div>
 
-    <!-- ฝั่งขวา: IoT Dashboard & User Profile Management -->
+    <!-- ฝั่งขวา: Sidebar & Dashboard -->
     <div class="sidebar">
       <div class="card">
         <h3>👤 Active User Profile</h3>
@@ -238,7 +235,7 @@
 
     // System States
     let isFaceModelsLoaded = false;
-    let currentSystemStep = 1;     // 1 = Face ID Scan, 2 = Pose Game Session
+    let currentSystemStep = 1;     
     let isFaceScanFinished = false;
     let isPoseSessionActive = false;
     let isScanningInProgress = false;
@@ -248,13 +245,13 @@
     let cameraUtils = null;
 
     // Multi-Exercise Game Engine State
-    let currentExercise = 1;       // 1 = Neck Stretch, 2 = Cross-Body Stretch
-    let currentStep = 0;          // 0 = ด้านซ้าย/แขนขวา, 1 = ด้านขวา/แขนซ้าย
+    let currentExercise = 1;       
+    let currentStep = 0;          
     let currentRound = 1;
     const TOTAL_ROUNDS = 2;
     let holdStartTime = null;
     const HOLD_DURATION = 15;
-    const STRETCH_ANGLE_MIN = 15; 
+    const STRETCH_ANGLE_MIN = 12; // 🎯 ปรับ threshold องศาให้เหมาะสมกับการเอียงคอ
 
     // IoT & User Database State
     let simulatedFSRRelaxed = false;
@@ -262,7 +259,7 @@
     let activeUser = null;
     let currentSessionScore = 0;
 
-    // --- 1. Initialize MediaPipe Pose ---
+    // --- MediaPipe Pose Setup ---
     const pose = new Pose({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
     });
@@ -278,7 +275,7 @@
       currentPoseLandmarks = results.poseLandmarks || null;
     });
 
-    // --- 2. Load Local Databases & Face-API Models ---
+    // --- Load Models ---
     window.addEventListener('load', async () => {
       loadKnownFacesFromStorage();
       poseStatus.innerText = "⏳ กำลังโหลดโมเดล Face Recognition...";
@@ -291,7 +288,6 @@
         
         isFaceModelsLoaded = true;
         poseStatus.innerText = "🔍 พร้อมสแกน! กรุณามองตรงมาที่กล้อง...";
-        console.log("✅ Face-API Models Loaded Successfully");
       } catch (err) {
         console.warn("⚠️ Face-API Model Load Error:", err);
         poseStatus.innerText = "⚠️ ไม่สามารถโหลดโมเดลสแกนหน้าได้ (ใช้โหมดสำรอง)";
@@ -300,21 +296,18 @@
       startWebcam();
     });
 
-    // --- 3. Camera Setup & Direct Frame Transfer Loop ---
+    // --- Camera Stream Engine ---
     function startWebcam() {
       cameraUtils = new Camera(videoElement, {
         onFrame: async () => {
-          // สลับวาดเฟรมลงบน Canvas
           drawFrame();
 
           const now = Date.now();
-          // STEP 1: สแกนหน้าด้วย Face-API
           if (currentSystemStep === 1 && now - lastScanTime > 500) {
             lastScanTime = now;
             processFaceScanRealtime();
           }
 
-          // STEP 2: ส่งเฟรมกล้องเข้า MediaPipe Pose Engine
           if (currentSystemStep === 2 && isPoseSessionActive) {
             await pose.send({ image: videoElement });
           }
@@ -329,13 +322,12 @@
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-      // วาดกล้องในรูปแบบกระจกเงา (Mirror View)
+      // Mirror Background Camera Render
       canvasCtx.translate(canvasElement.width, 0);
       canvasCtx.scale(-1, 1);
       canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
       canvasCtx.restore();
 
-      // วาดกรอบหน้าตอน Step 1
       if (detectedFaceBox) {
         const mirroredX = canvasElement.width - detectedFaceBox.box.x - detectedFaceBox.box.width;
         canvasCtx.strokeStyle = detectedFaceBox.color;
@@ -343,13 +335,12 @@
         canvasCtx.strokeRect(mirroredX, detectedFaceBox.box.y, detectedFaceBox.box.width, detectedFaceBox.box.height);
       }
 
-      // วาดจุด Skeleton Pose ตอน Step 2
       if (currentSystemStep === 2 && currentPoseLandmarks) {
         processPoseGamification(currentPoseLandmarks);
       }
     }
 
-    // --- 4. Step 1: Real-time Face Identification ---
+    // --- Face Recognition ---
     async function processFaceScanRealtime() {
       if (isFaceScanFinished || isScanningInProgress) return;
 
@@ -453,7 +444,7 @@
       startPoseGamificationSession();
     }
 
-    // --- 5. Step 2: Multi-Exercise Engine ---
+    // --- Pose Gamification Engine ---
     function startPoseGamificationSession() {
       currentSystemStep = 2;
       currentExercise = 1;
@@ -471,30 +462,32 @@
       poseStatus.style.color = "#FFD54F";
     }
 
+    // 🎯 สูตรคำนวณเวกเตอร์องศาเอียงคอที่แม่นยำ (Vector Tilt Math)
     function calculateNeckTiltAngle(ear, shoulder) {
       if (!ear || !shoulder) return 0;
-      const dy = ear.y - shoulder.y;
-      const dx = ear.x - shoulder.x;
-      const angleRad = Math.atan2(dy, dx);
-      const angleDeg = Math.abs(angleRad * (180 / Math.PI));
-      return Math.max(0, Math.round(90 - angleDeg));
+      // คำนวณความแตกต่างระยะในพิกัดพิกเซล
+      const dx = (ear.x - shoulder.x) * canvasElement.width;
+      const dy = (ear.y - shoulder.y) * canvasElement.height;
+      
+      // คำนวณองศาเทียบกับแนวตั้ง
+      const angleRad = Math.atan2(Math.abs(dx), Math.abs(dy));
+      const angleDeg = Math.round(angleRad * (180 / Math.PI));
+      return Math.min(60, Math.max(0, angleDeg));
     }
 
     function processPoseGamification(landmarks) {
       const currentTime = Date.now();
 
-      // =============================================================
-      // EXERCISE 1: ท่าที่ 1 - ยืดกล้ามเนื้อคอ (Neck Stretch)
-      // =============================================================
       if (currentExercise === 1) {
         exNameVal.innerText = "ท่าที่ 1: ยืดกล้ามเนื้อคอ (Neck Stretch)";
         
+        // Keypoints จาก MediaPipe Pose
         const rawLeftEar = landmarks[7];        
         const rawRightEar = landmarks[8];       
         const rawLeftShoulder = landmarks[11];  
         const rawRightShoulder = landmarks[12]; 
 
-        // 🎯 วาดเส้นและจุดพิกัด Pose บน Canvas สด
+        // วาดจุดและเส้นบน Mirror View
         drawLine(rawLeftEar, rawLeftShoulder, '#FF3D00');       
         drawLine(rawRightEar, rawRightShoulder, '#FF9100');     
         drawLine(rawLeftShoulder, rawRightShoulder, '#00E676'); 
@@ -504,6 +497,8 @@
         drawPoint(rawLeftShoulder, '#00E676');  
         drawPoint(rawRightShoulder, '#29B6F6'); 
 
+        // 🎯 คำนวณมุมเอียงจริงจากจุด Landmarks
+        // ในมุมมองกระจก: หูซ้ายจริงบนภาพวิดีโอคือ MediaPipe Left Ear (7)
         const leftNeckAngle = calculateNeckTiltAngle(rawLeftEar, rawLeftShoulder);
         const rightNeckAngle = calculateNeckTiltAngle(rawRightEar, rawRightShoulder);
 
@@ -512,7 +507,7 @@
 
         if (!isPoseSessionActive) return;
 
-        if (currentStep === 0) { // เอียงซ้าย
+        if (currentStep === 0) { // เอียงคอไปทางซ้ายมือผู้เล่น (คอเอียงไปซ้าย)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (leftNeckAngle >= STRETCH_ANGLE_MIN) {
@@ -534,7 +529,7 @@
               currentSessionScore += setScore;
               addScoreToActiveUser(setScore);
 
-              currentStep = 1; // สลับไปเอียงขวา
+              currentStep = 1;
               holdStartTime = null;
               timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
             }
@@ -547,7 +542,7 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
-        else if (currentStep === 1) { // เอียงขวา
+        else if (currentStep === 1) { // เอียงคอไปทางขวามือผู้เล่น
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
           if (rightNeckAngle >= STRETCH_ANGLE_MIN) {
@@ -572,7 +567,7 @@
               holdStartTime = null;
               if (currentRound < TOTAL_ROUNDS) {
                 currentRound++;
-                currentStep = 0; // ทำรอบที่ 2
+                currentStep = 0;
                 timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
               } else {
                 currentExercise = 2;
@@ -594,18 +589,15 @@
         }
       }
 
-      // =============================================================
-      // EXERCISE 2: ท่าที่ 2 - ยืดไหล่ข้ามอก (Cross-Body Stretch)
-      // =============================================================
       else if (currentExercise === 2) {
         exNameVal.innerText = "ท่าที่ 2: ยืดไหล่ข้ามอก (Cross-Body Stretch)";
 
-        drawPoint(landmarks[11], '#00E676'); // ไหล่ซ้าย
-        drawPoint(landmarks[12], '#29B6F6'); // ไหล่ขวา
-        drawPoint(landmarks[13], '#FFD54F'); // ข้อศอกซ้าย
-        drawPoint(landmarks[14], '#FFD54F'); // ข้อศอกขวา
-        drawPoint(landmarks[15], '#FF3D00'); // ข้อมือซ้าย
-        drawPoint(landmarks[16], '#FF9100'); // ข้อมือขวา
+        drawPoint(landmarks[11], '#00E676'); 
+        drawPoint(landmarks[12], '#29B6F6'); 
+        drawPoint(landmarks[13], '#FFD54F'); 
+        drawPoint(landmarks[14], '#FFD54F'); 
+        drawPoint(landmarks[15], '#FF3D00'); 
+        drawPoint(landmarks[16], '#FF9100'); 
 
         drawLine(landmarks[11], landmarks[13], '#00E676');
         drawLine(landmarks[13], landmarks[15], '#FF3D00');
@@ -617,7 +609,7 @@
         const leftWrist = landmarks[15];
         const rightShoulder = landmarks[12];
 
-        if (currentStep === 0) { // ยืดแขนขวาข้ามอก
+        if (currentStep === 0) {
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           const isRightArmCrossed = rightWrist.x > leftShoulder.x;
 
@@ -653,7 +645,7 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         }
-        else if (currentStep === 1) { // ยืดแขนซ้ายข้ามอก
+        else if (currentStep === 1) {
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           const isLeftArmCrossed = leftWrist.x < rightShoulder.x;
 
@@ -712,7 +704,7 @@
       }
     }
 
-    // --- 6. Helper Functions ---
+    // --- Helpers ---
     function triggerIntervention() {
       currentSystemStep = 1;
       currentExercise = 1;
@@ -776,7 +768,7 @@
       }
     }
 
-    // 🎯 วาดจุดและเส้นตรงตามพิกัด Canvas สะท้อนกระจก
+    // 🎯 ฟังก์ชันวาดเส้นและจุดพิกัดใน Mirror Mode 100%
     function drawLine(from, to, color = '#FFFFFF') {
       if (!from || !to) return;
       const x1 = (1 - from.x) * canvasElement.width;
