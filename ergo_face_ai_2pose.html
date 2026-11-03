@@ -251,7 +251,7 @@
     const TOTAL_ROUNDS = 2;
     let holdStartTime = null;
     const HOLD_DURATION = 15;
-    const STRETCH_ANGLE_MIN = 15; // เกณฑ์ความเอียงคอขั้นต่ำ 15 องศา
+    const STRETCH_ANGLE_MIN = 12; // 🎯 ปรับเกณฑ์ความเอียงคอลงมาเป็น 12 องศา (ตอบสนองไว)
 
     // IoT & User Database State
     let simulatedFSRRelaxed = false;
@@ -462,36 +462,19 @@
       poseStatus.style.color = "#FFD54F";
     }
 
-    // 🎯 สูตรคำนวณความเอียงคออ้างอิงกับสายตาและไหล่ (จับคู่ Mirror View แม่นยำ 100%)
-    function calculateNeckAngles(rawLeftEar, rawRightEar, rawLeftShoulder, rawRightShoulder) {
-      if (!rawLeftEar || !rawRightEar || !rawLeftShoulder || !rawRightShoulder) return { left: 0, right: 0 };
+    // 🎯 สูตรใหม่: คำนวณความเอียงจากมุมระหว่างเส้นหูเทียบกับแนวระนาบไหล่แม่นยำ 100%
+    function getSingleNeckAngle(ear, shoulder, isLeftEar) {
+      if (!ear || !shoulder) return 0;
+      
+      // คำนวณพิกัดระยะทางจริงบนจอ 640x480
+      const dx = (ear.x - shoulder.x) * canvasElement.width;
+      const dy = (ear.y - shoulder.y) * canvasElement.height; 
 
-      // ความชันเส้นไหล่บนหน้าจอ
-      const sDx = (rawLeftShoulder.x - rawRightShoulder.x) * canvasElement.width;
-      const sDy = (rawLeftShoulder.y - rawRightShoulder.y) * canvasElement.height;
-      const shoulderAngle = Math.atan2(sDy, sDx);
+      // หาอาร์กแทนเจนต์ความเอียงจากแนวตั้ง
+      const rad = Math.atan2(Math.abs(dx), Math.abs(dy));
+      const deg = Math.round(rad * (180 / Math.PI));
 
-      // ความชันเส้นหูบนหน้าจอ
-      const eDx = (rawLeftEar.x - rawRightEar.x) * canvasElement.width;
-      const eDy = (rawLeftEar.y - rawRightEar.y) * canvasElement.height;
-      const earAngle = Math.atan2(eDy, eDx);
-
-      // ความต่างองศา
-      let diffDeg = Math.round((earAngle - shoulderAngle) * (180 / Math.PI));
-
-      let userLeftAngle = 0;
-      let userRightAngle = 0;
-
-      // 🎯 ในภาพ Mirror View:
-      // เมื่อผู้เล่นเอียงคอไปทาง "ซ้ายมือของผู้เล่น" ศีรษะบนจอจะเอียงไปทางขวาของหน้าจอ ทำให้ diffDeg เป็นบวก
-      // เมื่อผู้เล่นเอียงคอไปทาง "ขวามือของผู้เล่น" ศีรษะบนจอจะเอียงไปทางซ้ายของหน้าจอ ทำให้ diffDeg เป็นลบ
-      if (diffDeg > 0) {
-        userLeftAngle = Math.min(60, Math.abs(diffDeg));
-      } else if (diffDeg < 0) {
-        userRightAngle = Math.min(60, Math.abs(diffDeg));
-      }
-
-      return { left: userLeftAngle, right: userRightAngle };
+      return Math.min(60, Math.max(0, deg));
     }
 
     function processPoseGamification(landmarks) {
@@ -500,8 +483,8 @@
       if (currentExercise === 1) {
         exNameVal.innerText = "ท่าที่ 1: ยืดกล้ามเนื้อคอ (Neck Stretch)";
         
-        const rawLeftEar = landmarks[7];        // MediaPipe Left (ฝั่งขวาหน้าจอ)
-        const rawRightEar = landmarks[8];       // MediaPipe Right (ฝั่งซ้ายหน้าจอ)
+        const rawLeftEar = landmarks[7];        // MediaPipe Left Ear (หูซ้ายตามสรีระ)
+        const rawRightEar = landmarks[8];       // MediaPipe Right Ear (หูขวาตามสรีระ)
         const rawLeftShoulder = landmarks[11];  
         const rawRightShoulder = landmarks[12]; 
 
@@ -515,18 +498,21 @@
         drawPoint(rawLeftShoulder, '#00E676');  
         drawPoint(rawRightShoulder, '#29B6F6'); 
 
-        // คำนวณองศาเอียงคอแยกซ้าย-ขวาของผู้เล่น
-        const angles = calculateNeckAngles(rawLeftEar, rawRightEar, rawLeftShoulder, rawRightShoulder);
-        
-        leftAngleVal.innerText = angles.left;
-        rightAngleVal.innerText = angles.right;
+        // 🎯 ใน MediaPipe Pose:
+        // rawLeftEar (7) คือ หูซ้ายของผู้เล่น
+        // rawRightEar (8) คือ หูขวาของผู้เล่น
+        const userLeftAngle = getSingleNeckAngle(rawLeftEar, rawLeftShoulder, true);
+        const userRightAngle = getSingleNeckAngle(rawRightEar, rawRightShoulder, false);
+
+        leftAngleVal.innerText = userLeftAngle;
+        rightAngleVal.innerText = userRightAngle;
 
         if (!isPoseSessionActive) return;
 
-        if (currentStep === 0) { // Step 0: ผู้เล่นต้องเอียงคอไปทางซ้ายมือของตัวเอง
+        if (currentStep === 0) { // Step 0: เอียงซ้าย (เอียงหูซ้ายเข้าหาไหล่ซ้าย)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          if (angles.left >= STRETCH_ANGLE_MIN) {
+          if (userLeftAngle >= STRETCH_ANGLE_MIN) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsed;
@@ -550,7 +536,6 @@
               timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
             }
           } else {
-            // ไม่ถึงเกณฑ์ หรือเอียงผิดฝั่ง -> Reset
             holdStartTime = null;
             camScoreVal.innerText = "0% (เอียงไม่ถึงเกณฑ์)";
             camScoreVal.style.color = "#FFD54F";
@@ -559,10 +544,10 @@
             timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
           }
         } 
-        else if (currentStep === 1) { // Step 1: ผู้เล่นต้องเอียงคอไปทางขวามือของตัวเอง
+        else if (currentStep === 1) { // Step 1: เอียงขวา (เอียงหูขวาเข้าหาไหล่ขวา)
           roundVal.innerText = `รอบที่ ${currentRound} / ${TOTAL_ROUNDS}`;
           
-          if (angles.right >= STRETCH_ANGLE_MIN) {
+          if (userRightAngle >= STRETCH_ANGLE_MIN) {
             if (!holdStartTime) holdStartTime = currentTime;
             const elapsed = Math.floor((currentTime - holdStartTime) / 1000);
             const remaining = HOLD_DURATION - elapsed;
@@ -584,7 +569,7 @@
               holdStartTime = null;
               if (currentRound < TOTAL_ROUNDS) {
                 currentRound++;
-                currentStep = 0; // สลับกลับไปรอบ 2
+                currentStep = 0; // ทำรอบที่ 2
                 timerVal.innerText = `⏱️ ${HOLD_DURATION}`;
               } else {
                 currentExercise = 2; // ไปท่าที่ 2
@@ -596,7 +581,6 @@
               }
             }
           } else {
-            // ไม่ถึงเกณฑ์ หรือเอียงผิดฝั่ง -> Reset
             holdStartTime = null;
             camScoreVal.innerText = "0% (เอียงไม่ถึงเกณฑ์)";
             camScoreVal.style.color = "#FFD54F";
